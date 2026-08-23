@@ -1,9 +1,9 @@
 {
   "version": 6,
   "configurePresets": [
-    {"name":"dev","generator":"Ninja","binaryDir":"${sourceDir}/build/dev","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","BUILD_TESTING":"ON"}},
+    {"name":"dev","generator":"Ninja","binaryDir":"${sourceDir}/build/dev","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","CMAKE_EXPORT_COMPILE_COMMANDS":"ON","BUILD_TESTING":"ON"}},
     {"name":"asan","inherits":"dev","binaryDir":"${sourceDir}/build/asan","cacheVariables":{"SMAC_ENABLE_SANITIZERS":"ON"}},
-    {"name":"release","generator":"Ninja","binaryDir":"${sourceDir}/build/release","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","BUILD_TESTING":"ON"}}
+    {"name":"release","generator":"Ninja","binaryDir":"${sourceDir}/build/release","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","CMAKE_EXPORT_COMPILE_COMMANDS":"ON","BUILD_TESTING":"ON"}}
   ],
   "buildPresets": [{"name":"dev","configurePreset":"dev"},{"name":"asan","configurePreset":"asan"},{"name":"release","configurePreset":"release"}],
   "testPresets": [{"name":"dev","configurePreset":"dev","output":{"outputOnFailure":true}},{"name":"asan","configurePreset":"asan","output":{"outputOnFailure":true}}]
