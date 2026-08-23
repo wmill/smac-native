@@ -20,7 +20,7 @@ smac_set_warnings(smac_core)
 
 add_library(smac_formats
   src/formats/text.cpp src/formats/data_directory.cpp src/formats/rules.cpp
-  src/formats/terran_map.cpp src/formats/sha256.cpp)
+  src/formats/terran_map.cpp src/formats/sha256.cpp src/formats/pcx.cpp)
 target_include_directories(smac_formats PUBLIC include)
 target_link_libraries(smac_formats PUBLIC smac_core)
 smac_set_warnings(smac_formats)
@@ -102,7 +102,7 @@ if(SMAC_BUILD_FUZZERS)
     target_compile_options(${target} PRIVATE -fsanitize=fuzzer-no-link,address,undefined
       -fno-omit-frame-pointer)
   endforeach()
-  foreach(reader rules text terran_map replay)
+  foreach(reader rules text terran_map pcx replay)
     add_executable(fuzz_${reader} fuzz/fuzz_${reader}.cpp)
     target_link_libraries(fuzz_${reader} PRIVATE smac_formats)
     target_compile_options(fuzz_${reader} PRIVATE -fsanitize=fuzzer,address,undefined

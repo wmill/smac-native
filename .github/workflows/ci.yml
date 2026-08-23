@@ -35,8 +35,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - run: cmake --preset fuzz
-      - run: cmake --build --preset fuzz --target fuzz_rules fuzz_text fuzz_terran_map fuzz_replay
+      - run: cmake --build --preset fuzz --target fuzz_rules fuzz_text fuzz_terran_map fuzz_pcx fuzz_replay
       - run: build/fuzz/fuzz_rules -runs=2000 fuzz/corpus/rules
       - run: build/fuzz/fuzz_text -runs=2000 fuzz/corpus/text
       - run: build/fuzz/fuzz_terran_map -runs=2000 fuzz/corpus/terran_map
+      - run: build/fuzz/fuzz_pcx -runs=2000 fuzz/corpus/pcx
       - run: build/fuzz/fuzz_replay -runs=2000 fuzz/corpus/replay

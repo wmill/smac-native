@@ -1,13 +1,16 @@
 #include "smac/formats/data_directory.hpp"
+#include "smac/formats/pcx.hpp"
 #include "smac/formats/rules.hpp"
 #include "smac/formats/terran_map.hpp"
 
+#include <algorithm>
+#include <array>
 #include <iostream>
 #include <variant>
 namespace sf = smac::formats;
 static int usage() {
     std::cerr << "usage:\n  smac-tool verify-data --data-dir DIR\n  smac-tool dump-rules "
-                 "--data-dir DIR\n  smac-tool inspect-map FILE\n";
+                 "--data-dir DIR\n  smac-tool inspect-map FILE\n  smac-tool inspect-pcx FILE\n";
     return 2;
 }
 static const char* value(int argc, char** argv, const std::string& key) {
@@ -70,6 +73,29 @@ int main(int argc, char** argv) {
                   << "\nabstract bytes: " << m.abstract_regions.size() << '\n';
         for (auto& l : m.landmarks)
             std::cout << "  (" << l.x << ',' << l.y << ") " << l.name << '\n';
+        return 0;
+    }
+    if (cmd == "inspect-pcx" && argc == 3) {
+        auto result = sf::load_pcx(argv[2]);
+        if (auto* error = std::get_if<sf::Error>(&result)) {
+            std::cerr << error->message << " at byte " << error->offset << '\n';
+            return 1;
+        }
+        const auto& image = std::get<sf::IndexedImage>(result);
+        std::array<std::size_t, 256> counts{};
+        for (const auto pixel : image.pixels)
+            ++counts[pixel];
+        std::size_t colors = 0;
+        for (const auto count : counts)
+            colors += count != 0;
+        const auto background = static_cast<std::size_t>(
+            std::distance(counts.begin(), std::max_element(counts.begin(), counts.end())));
+        const auto& color = image.palette[background];
+        std::cout << "PCX " << image.width << 'x' << image.height << " (" << colors
+                  << " used palette indices)\nmost-common index: " << background << " ("
+                  << static_cast<int>(color.red) << ',' << static_cast<int>(color.green) << ','
+                  << static_cast<int>(color.blue) << ", " << counts[background]
+                  << " pixels)\nindex-255 pixels: " << counts[255] << '\n';
         return 0;
     }
     return usage();

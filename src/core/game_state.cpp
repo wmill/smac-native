@@ -68,8 +68,18 @@ std::uint64_t GameState::stable_hash() const noexcept {
         add(static_cast<std::uint8_t>(tile.terrain));
         add(tile.climate);
         add(tile.contour);
+        add(tile.site);
+        add(tile.occupant_owner);
         add(tile.region);
+        add(tile.visibility);
+        add(tile.rockiness_code);
+        add(tile.locked_by);
+        add(tile.worked_by);
+        add(static_cast<std::uint8_t>(tile.territory));
         add(tile.improvements);
+        add(tile.landmark);
+        for (const auto visible : tile.visible_improvements)
+            add(visible);
     }
     add(static_cast<std::uint32_t>(rules_.road_movement_rate));
     add(rules_.section_names.size());

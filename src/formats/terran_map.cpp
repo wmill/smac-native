@@ -106,8 +106,17 @@ smac::core::WorldMap TerranMap::to_world_map() const {
         auto& s = tiles[i];
         d.climate = s.climate;
         d.contour = s.contour;
+        d.site = s.site_owner >> 4U;
+        d.occupant_owner = s.site_owner & 0x0FU;
         d.region = s.region;
+        d.visibility = s.visibility;
+        d.rockiness_code = s.rock_lock_user >> 6U;
+        d.locked_by = (s.rock_lock_user >> 3U) & 7U;
+        d.worked_by = s.rock_lock_user & 7U;
+        d.territory = s.territory;
         d.improvements = s.improvements;
+        d.landmark = s.landmark;
+        d.visible_improvements = s.visible_improvements;
         d.terrain =
             (s.climate & 0xE0U) < 0x60U ? smac::core::Terrain::ocean : smac::core::Terrain::land;
     }
