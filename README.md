@@ -4,6 +4,9 @@ SMAC Native is an early, clean native reimplementation of Sid Meier's Alpha Cent
 
 The first slice provides a deterministic C++20 simulation core, bounded rules/map readers, asset validation, a reverse-engineering CLI, and an optional SDL3 map client.
 
+See [ROADMAP.md](ROADMAP.md) for the current implementation status and the milestone path to a
+complete playable game.
+
 ```sh
 cmake --preset dev
 cmake --build --preset dev
@@ -18,4 +21,3 @@ SDL is deliberately not downloaded by the default configure. Install SDL3, SDL3_
 Only user-owned data is loaded at runtime. Do not commit or redistribute original executables, text, maps, fonts, art, or audio. Tests use generated synthetic inputs.
 
 Copyright 2026 SMAC Native contributors. Licensed under GPL-3.0-or-later; see `LICENSE`.
-
