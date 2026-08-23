@@ -41,8 +41,8 @@ SDL3, SDL3_image, and SDL3_ttf are not downloaded by default — install them yo
 `-DSMAC_FETCH_DEPENDENCIES=ON` at configure time to fetch the pinned versions in `CMakeLists.txt`.
 `SMAC_BUILD_CLIENT=OFF` skips the client target entirely.
 
-Formatting follows `.clang-format` (LLVM-based, 100 cols, 4-space indent); there is no CI formatting
-check yet (tracked in `ROADMAP.md` under M0).
+Formatting follows `.clang-format` (LLVM-based, 100 cols, 4-space indent). Use the `format` target to
+update C++ files and `format-check` to run the same check enforced by CI.
 
 ## Architecture
 
@@ -54,8 +54,9 @@ enforced by convention, not by the build, so don't add SDL or raw-binary-layout 
   (staggered coordinates, horizontal wrap, polar boundaries, neighbor lookup), `GameState` (owned units
   and turn state, mutated only via a `Command` → `Event` interface: `MoveUnit`/`EndTurn` in,
   `UnitMoved`/`TurnAdvanced`/`CommandRejected` out), and bounded Dijkstra pathfinding
-  (`find_path`, budget-limited). `GameState::stable_hash()` is a deterministic hash of authoritative
-  state, currently narrow — expand it whenever new authoritative state is added (see ROADMAP M0).
+  (`find_path`, budget-limited). `GameState::stable_hash()` covers the current authoritative map,
+  rules, unit, and turn state. The versioned replay module serializes commands/events and verifies
+  every resulting hash; expand the hash whenever authoritative state is added.
 - **`smac_formats`** (`include/smac/formats/`, `src/formats/`) — bounded readers for original file
   formats, layered on `smac_core` types: `data_directory` (case-insensitive asset lookup + validation
   report), `rules` (line-based `alphax.txt` section parser, not yet a typed `RulesDatabase`), `text`

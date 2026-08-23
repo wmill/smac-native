@@ -11,12 +11,16 @@ complete playable game.
 cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
+cmake --build --preset dev --target format-check
 build/dev/smac-tool verify-data --data-dir /path/to/smac_extracted
 build/dev/smac-tool inspect-map /path/to/smac_extracted/maps/xplanet.MP
 build/dev/smac-native --data-dir /path/to/smac_extracted
 ```
 
 SDL is deliberately not downloaded by the default configure. Install SDL3, SDL3_image, and SDL3_ttf, or opt in with `-DSMAC_FETCH_DEPENDENCIES=ON`. Dependency versions are pinned in `CMakeLists.txt`.
+
+Deterministic command logs use the documented native [replay format](docs/formats/replay.md). CI
+builds the headless and SDL configurations, checks formatting, and runs sanitized reader fuzzing.
 
 Only user-owned data is loaded at runtime. Do not commit or redistribute original executables, text, maps, fonts, art, or audio. Tests use generated synthetic inputs.
 

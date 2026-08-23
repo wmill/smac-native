@@ -46,14 +46,14 @@ Last reconciled with the repository: 2026-08-22.
   terrain from `ter1.pcx` or apply complete palette/transparency rules.
 - Movement supports an adjacent land unit and roads only. It does not yet model unit abilities,
   terrain, rivers, mag tubes, sea/air movement, zones of control, or transport.
-- Tests cover the initial boundaries, but fuzzing, replay logs, oracle comparisons, and screenshot
+- Tests cover the initial boundaries and deterministic replay logs. Oracle comparisons and screenshot
   tests have not been added.
 
 ## Milestone map
 
 | Milestone | Outcome | Status |
 |---|---|---|
-| M0 Foundation | Portable build, owned state, bounded input, basic tools | Substantially complete |
+| M0 Foundation | Portable build, owned state, bounded input, basic tools | Complete |
 | M1 Authentic map slice | Original-looking map and faithful single-unit movement | In progress |
 | M2 Compatibility fixtures | Typed rules plus read-only scenario/save import | Not started |
 | M3 Units and combat | Prototypes, workshops, combat, morale, damage, transport | Not started |
@@ -77,11 +77,11 @@ Goal: every later system has a portable, deterministic, testable home.
 - [x] Add developer, sanitizer, and release presets.
 - [x] Build and test the headless configuration on macOS and Linux CI.
 - [x] Add formatting configuration and format the C++ sources.
-- [ ] Add a CI formatting check.
-- [ ] Build and smoke-test the SDL client in CI.
-- [ ] Add fuzz targets for every binary/text reader and run a short corpus in CI.
-- [ ] Define versioned command/event serialization and deterministic replay logs.
-- [ ] Expand the stable hash to cover all authoritative state, including map mutations and rules.
+- [x] Add a CI formatting check.
+- [x] Build and smoke-test the SDL client in CI.
+- [x] Add fuzz targets for every binary/text reader and run a short corpus in CI.
+- [x] Define versioned command/event serialization and deterministic replay logs.
+- [x] Expand the stable hash to cover all authoritative state, including map mutations and rules.
 
 Exit gate: CI rejects unsafe input regressions and deterministic command replays produce identical
 state hashes on macOS and Linux.
@@ -335,5 +335,5 @@ When a change lands:
    here if it changes sequencing or scope.
 5. Prefer small issues that close one checkbox or a clearly named part of one checkbox.
 
-The immediate critical path is **M0 replay/fuzz foundations → M1 authentic terrain and movement →
-M2 typed rules/imports → M3 combat → M4 economy → M5 AI/game setup → M6 complete match**.
+The immediate critical path is **M1 authentic terrain and movement → M2 typed rules/imports → M3
+combat → M4 economy → M5 AI/game setup → M6 complete match**.
