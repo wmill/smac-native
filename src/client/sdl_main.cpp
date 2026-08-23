@@ -11,6 +11,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
@@ -533,8 +534,21 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string_view(argv[1]) == "--synthetic-screenshot")
         return render_synthetic_screenshot(argv[2]);
     const bool screenshot = argc == 5 && std::string_view(argv[3]) == "--screenshot";
-    if ((argc != 3 && !screenshot) || std::string_view(argv[1]) != "--data-dir") {
-        std::cerr << "usage: smac-native --data-dir DIR [--screenshot FILE]\n";
+    const bool benchmark = argc == 5 && std::string_view(argv[3]) == "--benchmark-frames";
+    std::uint32_t benchmark_frames = 0;
+    if (benchmark) {
+        const std::string_view count = argv[4];
+        const auto parsed =
+            std::from_chars(count.data(), count.data() + count.size(), benchmark_frames);
+        if (parsed.ec != std::errc{} || parsed.ptr != count.data() + count.size() ||
+            benchmark_frames < 2 || benchmark_frames > 10'000) {
+            std::cerr << "benchmark frame count must be between 2 and 10000\n";
+            return 2;
+        }
+    }
+    if ((argc != 3 && !screenshot && !benchmark) || std::string_view(argv[1]) != "--data-dir") {
+        std::cerr << "usage: smac-native --data-dir DIR [--screenshot FILE | "
+                     "--benchmark-frames COUNT]\n";
         return 2;
     }
     const std::filesystem::path data_dir = argv[2];
@@ -592,13 +606,13 @@ int main(int argc, char** argv) {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     auto flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    if (screenshot)
+    if (screenshot || benchmark)
         flags |= SDL_WINDOW_HIDDEN;
     if (!SDL_CreateWindowAndRenderer("SMAC Native", 1280, 800, flags, &window, &renderer)) {
         std::cerr << SDL_GetError() << '\n';
         return 1;
     }
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetRenderVSync(renderer, benchmark ? 0 : 1);
     const auto terrain_texture = create_atlas_texture(renderer, *terrain_image, {253});
     const auto texture_texture = create_atlas_texture(renderer, *texture_image, {255});
     const auto unit_texture = create_atlas_texture(renderer, *unit_image, {253, 255});
@@ -628,6 +642,8 @@ int main(int argc, char** argv) {
     bool dragging = false;
     bool reveal_all = true;
     bool screenshot_written = false;
+    std::vector<Uint64> frame_times;
+    frame_times.reserve(benchmark_frames);
 
     while (running) {
         SDL_Event event;
@@ -750,6 +766,7 @@ int main(int argc, char** argv) {
             event_queue.pop_front();
         }
 
+        const auto render_started = SDL_GetTicksNS();
         SDL_GetRenderOutputSize(renderer, &output_width, &output_height);
         SDL_SetRenderDrawColor(renderer, 7, 12, 18, 255);
         SDL_RenderClear(renderer);
@@ -816,6 +833,28 @@ int main(int argc, char** argv) {
             running = false;
         }
         SDL_RenderPresent(renderer);
+        if (benchmark) {
+            frame_times.push_back(SDL_GetTicksNS() - render_started);
+            if (frame_times.size() >= benchmark_frames)
+                running = false;
+        }
+    }
+
+    bool benchmark_passed = true;
+    if (benchmark) {
+        std::sort(frame_times.begin(), frame_times.end());
+        const auto median = frame_times[frame_times.size() / 2];
+        const auto p95_index = (frame_times.size() * 95 + 99) / 100 - 1;
+        const auto p95 = frame_times[p95_index];
+        const auto maximum = frame_times.back();
+        constexpr Uint64 m1_frame_budget_ns = 33'333'334;
+        benchmark_passed = p95 <= m1_frame_budget_ns;
+        const auto milliseconds = [](Uint64 nanoseconds) {
+            return static_cast<double>(nanoseconds) / 1'000'000.0;
+        };
+        std::cout << "frames=" << frame_times.size() << " median_ms=" << milliseconds(median)
+                  << " p95_ms=" << milliseconds(p95) << " max_ms=" << milliseconds(maximum)
+                  << " budget_ms=" << milliseconds(m1_frame_budget_ns) << '\n';
     }
 
     hud_cache.reset();
@@ -828,5 +867,7 @@ int main(int argc, char** argv) {
     SDL_DestroyWindow(window);
     TTF_Quit();
     SDL_Quit();
-    return screenshot && !screenshot_written ? 1 : 0;
+    if (screenshot && !screenshot_written)
+        return 1;
+    return benchmark_passed ? 0 : 1;
 }

@@ -15,6 +15,7 @@ cmake --build --preset dev --target format-check
 build/dev/smac-tool verify-data --data-dir /path/to/smac_extracted
 build/dev/smac-tool inspect-map /path/to/smac_extracted/maps/xplanet.MP
 build/dev/smac-native --data-dir /path/to/smac_extracted
+build/dev/smac-native --data-dir /path/to/smac_extracted --benchmark-frames 120
 ```
 
 SDL is deliberately not downloaded by the default configure. Install SDL3, SDL3_image, and SDL3_ttf, or opt in with `-DSMAC_FETCH_DEPENDENCIES=ON`. Dependency versions are pinned in `CMakeLists.txt`.
