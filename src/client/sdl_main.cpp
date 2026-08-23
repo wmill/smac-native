@@ -716,6 +716,7 @@ int main(int argc, char** argv) {
     bool running = true;
     bool dragging = false;
     bool reveal_all = true;
+    bool screenshot_attempted = false;
     bool screenshot_written = false;
     std::vector<Uint64> frame_times;
     frame_times.reserve(benchmark_frames);
@@ -898,13 +899,16 @@ int main(int argc, char** argv) {
             const SDL_FRect destination{16, 16, hud_cache.width, hud_cache.height};
             SDL_RenderTexture(renderer, hud_cache.texture, nullptr, &destination);
         }
-        if (screenshot && !screenshot_written) {
+        if (screenshot && !screenshot_attempted) {
+            screenshot_attempted = true;
             if (auto* surface = SDL_RenderReadPixels(renderer, nullptr)) {
-                if (!SDL_SaveBMP(surface, argv[4]))
+                screenshot_written = SDL_SaveBMP(surface, argv[4]);
+                if (!screenshot_written)
                     std::cerr << "failed saving screenshot: " << SDL_GetError() << '\n';
                 SDL_DestroySurface(surface);
+            } else {
+                std::cerr << "failed reading screenshot pixels: " << SDL_GetError() << '\n';
             }
-            screenshot_written = true;
             running = false;
         }
         SDL_RenderPresent(renderer);
