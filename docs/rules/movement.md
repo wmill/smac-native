@@ -21,9 +21,10 @@ can enter either terrain domain. A destination occupied by a hostile unit is rej
 is outside M1; friendly stacking remains legal. Conventional land units cannot move directly from
 one enemy zone-of-control tile to another.
 
-Horizontal wrapping and polar rejection come from `WorldMap`, so commands and Dijkstra previews use
-the same topology. The pathfinder calls the same unit-aware move evaluator as command execution and
-uses a stable coordinate tie-breaker.
+Horizontal wrapping and polar rejection come from `WorldMap`. Its eight adjacent offsets match
+OpenSMACX `RadiusOffset[1..8]`, including the north/south `(0, ±2)` directions, so commands and
+Dijkstra previews use the same topology. The pathfinder calls the same unit-aware move evaluator as
+command execution and uses a stable coordinate tie-breaker.
 
 Deliberate M1 limits: diplomacy is not modeled, so different faction IDs are hostile; bases do not
 yet have owned records; damage, morale, projects other than the represented Xenoempathy trait, and

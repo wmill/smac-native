@@ -1,11 +1,18 @@
 #pragma once
 #include "smac/core/types.hpp"
 
+#include <array>
 #include <optional>
 #include <span>
 #include <vector>
 
 namespace smac::core {
+// OpenSMACX RadiusOffset[1..8], clockwise from northeast in staggered coordinates.
+inline constexpr std::array adjacent_offsets{
+    MapPosition{1, -1}, MapPosition{2, 0},  MapPosition{1, 1},   MapPosition{0, 2},
+    MapPosition{-1, 1}, MapPosition{-2, 0}, MapPosition{-1, -1}, MapPosition{0, -2},
+};
+
 class WorldMap {
   public:
     WorldMap(std::int32_t width, std::int32_t height, bool wraps = true);

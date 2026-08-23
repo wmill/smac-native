@@ -1,4 +1,5 @@
 #include "smac/core/game_state.hpp"
+#include "smac/core/map_geometry.hpp"
 #include "smac/core/pathfinding.hpp"
 #include "smac/core/replay.hpp"
 #include "smac/formats/atlas.hpp"
@@ -36,8 +37,37 @@ int main() {
     CHECK(map.valid({0, 0}));
     CHECK(!map.valid({1, 0}));
     CHECK((map.normalize({-2, 0}) == sc::MapPosition{6, 0}));
-    CHECK(map.neighbors({0, 0}).size() == 4);
-    CHECK(map.neighbors({1, 1}).size() == 6);
+    CHECK(map.neighbors({0, 0}).size() == 5);
+    CHECK(map.neighbors({1, 1}).size() == 7);
+    CHECK(map.neighbors({2, 2}).size() == 7);
+    const auto middle_neighbors = map.neighbors({1, 1});
+    CHECK(std::find(middle_neighbors.begin(), middle_neighbors.end(), sc::MapPosition{1, 3}) !=
+          middle_neighbors.end());
+    const sc::WorldMap taller_map(8, 6, true);
+    const auto eight_neighbors = taller_map.neighbors({2, 2});
+    CHECK(eight_neighbors.size() == 8);
+    CHECK(std::find(eight_neighbors.begin(), eight_neighbors.end(), sc::MapPosition{2, 0}) !=
+          eight_neighbors.end());
+    for (const auto zoom : {0.5, 1.0, 1.75, 2.5}) {
+        const sc::MapProjection projection{37.25, -11.5, zoom};
+        for (const auto position :
+             {sc::MapPosition{0, 0}, sc::MapPosition{6, 0}, sc::MapPosition{1, 1},
+              sc::MapPosition{7, 1}, sc::MapPosition{2, 2}}) {
+            const auto picked =
+                sc::screen_to_world(map, projection, projection.tile_center(position));
+            CHECK(picked == position);
+        }
+        const auto seam = projection.tile_center({-2, 2});
+        CHECK((sc::screen_to_world(map, projection, seam) == sc::MapPosition{6, 2}));
+        CHECK(!sc::screen_to_world(map, projection, projection.tile_center({0, -2})));
+    }
+    const sc::MapProjection culling_projection{0, 0, 1.0};
+    const auto visible =
+        sc::visible_tiles(map, culling_projection, sc::ScreenRect{-110, 0, 260, 120});
+    CHECK(!visible.empty());
+    CHECK(std::any_of(visible.begin(), visible.end(), [](const sc::VisibleTile& tile) {
+        return tile.position == sc::MapPosition{6, 0} && tile.unwrapped.x == -2;
+    }));
     for (auto& t : map.tiles())
         t.terrain = sc::Terrain::land;
     sc::GameState state(std::move(map));
@@ -216,8 +246,16 @@ int main() {
         CHECK(indexed.at(1, 1) == 4);
         CHECK((indexed.palette[1] == sf::PaletteColor{11, 22, 33, 255}));
     }
-    CHECK(sf::find_region(sf::terrain_atlas, "fungus") != nullptr);
+    CHECK(sf::find_region(sf::terrain_atlas, "resource_nutrient_land") != nullptr);
     CHECK(sf::find_region(sf::unit_atlas, "mind_worm") != nullptr);
+    const auto* forest = sf::find_region(sf::texture_atlas, "forest");
+    CHECK(forest != nullptr);
+    if (forest)
+        CHECK((sf::atlas_frame(*forest, 5) == sf::AtlasRect{583, 63, 56, 56}));
+    const auto* water = sf::find_region(sf::texture_atlas, "water_surface");
+    const auto* road = sf::find_region(sf::texture_atlas, "road");
+    CHECK((water && water->source == sf::AtlasRect{280, 136, 56, 56}));
+    CHECK((road && sf::atlas_frame(*road, 8) == sf::AtlasRect{889, 509, 56, 56}));
     pcx.resize(140);
     CHECK(!sf::ok(sf::parse_pcx(pcx)));
     std::vector<std::byte> bytes(15 + 2724 + 4 * 44);

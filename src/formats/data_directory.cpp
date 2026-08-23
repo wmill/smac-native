@@ -46,6 +46,7 @@ ValidationReport validate_data_directory(const std::filesystem::path& root) {
                    "morgan.txt", "univ.txt"})
         add(std::string("faction ") + f, f, true);
     add("terrain atlas", "ter1.pcx", true);
+    add("terrain texture atlas", "texture.pcx", true);
     add("unit atlas", "Units.pcx", true);
     add("original display font", "ALPHC___.TTF", false);
     add("Arial Narrow font", "arialn.ttf", false);

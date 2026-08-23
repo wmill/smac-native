@@ -23,12 +23,11 @@ std::optional<MapPosition> WorldMap::normalize(MapPosition p) const noexcept {
     return valid(p) ? std::optional<MapPosition>{p} : std::nullopt;
 }
 std::vector<MapPosition> WorldMap::neighbors(MapPosition p) const {
-    static constexpr MapPosition offsets[]{{-2, 0}, {2, 0}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
     std::vector<MapPosition> out;
-    out.reserve(6);
+    out.reserve(adjacent_offsets.size());
     if (!valid(p))
         return out;
-    for (auto d : offsets)
+    for (auto d : adjacent_offsets)
         if (auto n = normalize({p.x + d.x, p.y + d.y}))
             out.push_back(*n);
     return out;

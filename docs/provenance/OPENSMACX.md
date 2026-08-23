@@ -2,7 +2,7 @@
 
 | Native component | Recovered evidence | Treatment |
 |---|---|---|
-| staggered indexing and horizontal wrap | `OpenSMACX/src/map.cpp` (`map_loc`, `xrange`, `on_map`) | Re-expressed with owned `WorldMap`; no addresses or globals |
+| staggered indexing and horizontal wrap | `OpenSMACX/src/map.cpp` (`map_loc`, `xrange`, `on_map`) and `map.h` (`RadiusOffset[1..8]`) | Re-expressed with owned `WorldMap`; all eight adjacent directions retained, with no addresses or globals |
 | map tile fields and flags | `OpenSMACX/src/map.h`, GPL-3 | Re-expressed as fixed-width decoded fields while retaining raw bytes |
 | climate, rainfall, temperature, and rockiness masks | `OpenSMACX/src/map.h` and `map.cpp` (`climate_at`, `rocky_at`) | Faithful bit decoding; unknown enum values remain representable |
 | ocean boundary | `OpenSMACX/src/map.cpp` (`is_ocean`) | Faithful: altitude below shoreline (`0x60`) is ocean |
