@@ -20,7 +20,8 @@ build/dev/smac-native --data-dir /path/to/smac_extracted
 SDL is deliberately not downloaded by the default configure. Install SDL3, SDL3_image, and SDL3_ttf, or opt in with `-DSMAC_FETCH_DEPENDENCIES=ON`. Dependency versions are pinned in `CMakeLists.txt`.
 
 Deterministic command logs use the documented native [replay format](docs/formats/replay.md). CI
-builds the headless and SDL configurations, checks formatting, and runs sanitized reader fuzzing.
+builds the headless and SDL configurations, checks formatting, renders and validates a synthetic
+indexed-map screenshot, and runs sanitized reader fuzzing.
 
 Only user-owned data is loaded at runtime. Do not commit or redistribute original executables, text, maps, fonts, art, or audio. Tests use generated synthetic inputs.
 

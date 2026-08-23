@@ -70,6 +70,10 @@ if(BUILD_TESTING)
   add_test(NAME smac_tests COMMAND smac_tests)
   if(SMAC_HAVE_SDL)
     add_test(NAME smac_native_sdl_smoke COMMAND smac-native --version)
+    add_test(NAME smac_native_screenshot
+      COMMAND smac-native --synthetic-screenshot ${CMAKE_CURRENT_BINARY_DIR}/synthetic-map.bmp)
+    set_tests_properties(smac_native_screenshot PROPERTIES
+      ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_RENDER_DRIVER=software")
   endif()
 endif()
 

@@ -28,7 +28,7 @@ jobs:
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - run: cmake --preset sdl-ci
       - run: cmake --build --preset sdl-ci --target smac-native
-      - run: ctest --test-dir build/sdl-ci --output-on-failure -R smac_native_sdl_smoke
+      - run: ctest --test-dir build/sdl-ci --output-on-failure -R 'smac_native_(sdl_smoke|screenshot)'
   fuzz:
     runs-on: ubuntu-latest
     steps:

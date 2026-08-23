@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <initializer_list>
@@ -402,6 +403,125 @@ void update_text_cache(SDL_Renderer* renderer, TTF_Font* font, TextCache& cache,
     cache.texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_DestroySurface(surface);
 }
+
+void paint_region(sf::IndexedImage& image, const sf::AtlasRegion& region, std::uint8_t index,
+                  bool center_only = false) {
+    for (std::uint8_t frame = 0; frame < region.frames; ++frame) {
+        auto rectangle = sf::atlas_frame(region, frame);
+        if (center_only) {
+            rectangle.x += rectangle.width / 2 - 8;
+            rectangle.y += rectangle.height / 2 - 8;
+            rectangle.width = 16;
+            rectangle.height = 16;
+        }
+        for (std::int32_t y = rectangle.y; y < rectangle.y + rectangle.height; ++y) {
+            for (std::int32_t x = rectangle.x; x < rectangle.x + rectangle.width; ++x) {
+                image.pixels[static_cast<std::size_t>(y) * image.width +
+                             static_cast<std::size_t>(x)] = index;
+            }
+        }
+    }
+}
+
+sf::IndexedImage synthetic_atlas(std::uint8_t background) {
+    sf::IndexedImage image;
+    image.width = 1024;
+    image.height = 768;
+    image.pixels.resize(static_cast<std::size_t>(image.width) * image.height, background);
+    image.palette[1] = {132, 70, 42, 255};
+    image.palette[2] = {20, 90, 160, 255};
+    image.palette[3] = {190, 35, 70, 255};
+    image.palette[4] = {245, 245, 220, 255};
+    image.palette[253] = {152, 24, 228, 255};
+    image.palette[255] = {100, 16, 156, 255};
+    return image;
+}
+
+bool pixel_near(SDL_Surface* surface, sc::ScreenPoint point, SDL_Color expected) {
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    Uint8 alpha = 0;
+    if (!SDL_ReadSurfacePixel(surface, static_cast<int>(point.x), static_cast<int>(point.y), &red,
+                              &green, &blue, &alpha))
+        return false;
+    constexpr int tolerance = 4;
+    return std::abs(static_cast<int>(red) - expected.r) <= tolerance &&
+           std::abs(static_cast<int>(green) - expected.g) <= tolerance &&
+           std::abs(static_cast<int>(blue) - expected.b) <= tolerance && alpha >= 250;
+}
+
+int render_synthetic_screenshot(const std::filesystem::path& output) {
+    auto terrain_image = synthetic_atlas(253);
+    auto texture_image = synthetic_atlas(255);
+    auto unit_image = synthetic_atlas(255);
+    paint_region(texture_image, *sf::find_region(sf::texture_atlas, "arid"), 1);
+    paint_region(texture_image, *sf::find_region(sf::texture_atlas, "water_surface"), 2);
+    paint_region(texture_image, *sf::find_region(sf::texture_atlas, "fungus_land"), 3);
+    paint_region(unit_image, *sf::find_region(sf::unit_atlas, "mind_worm"), 4, true);
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << "synthetic screenshot SDL initialization failed: " << SDL_GetError() << '\n';
+        return 1;
+    }
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!SDL_CreateWindowAndRenderer("SMAC Native screenshot test", 640, 384, SDL_WINDOW_HIDDEN,
+                                     &window, &renderer)) {
+        std::cerr << "synthetic screenshot window failed: " << SDL_GetError() << '\n';
+        SDL_Quit();
+        return 1;
+    }
+    const auto terrain = create_atlas_texture(renderer, terrain_image, {253});
+    const auto texture = create_atlas_texture(renderer, texture_image, {255});
+    const auto units = create_atlas_texture(renderer, unit_image, {253, 255});
+
+    sc::WorldMap map(8, 6, true);
+    for (auto& tile : map.tiles()) {
+        tile.terrain = sc::Terrain::land;
+        tile.climate = 0x60;
+        tile.visibility = 1U << 1U;
+    }
+    map.at({4, 2}).terrain = sc::Terrain::ocean;
+    map.at({3, 3}).improvements = sc::tile_fungus;
+    map.at({5, 3}).visibility = 0;
+    sc::GameState game(std::move(map));
+    game.units().push_back(
+        sc::make_unit(1, 1, {1, 3}, sc::Chassis::native_life, sc::Domain::land, game.rules()));
+    const sc::MapProjection projection{80, 40, 1.0};
+
+    SDL_SetRenderDrawColor(renderer, 7, 12, 18, 255);
+    SDL_RenderClear(renderer);
+    const auto visible = sc::visible_tiles(game.map(), projection, {0, 0, 640, 384});
+    for (const auto& tile : visible)
+        draw_tile(renderer, game, projection, tile, terrain, texture, false, 1);
+    const auto unit_top = projection.tile_top_left({1, 3});
+    draw_named_region(renderer, units, sf::unit_atlas, "mind_worm", 0,
+                      {unit_top.x, unit_top.y - 18.0}, 100, 76);
+    draw_diamond(renderer, projection, {1, 3}, {250, 211, 55, 255});
+    draw_diamond(renderer, projection, {3, 3}, {80, 220, 235, 255});
+
+    auto* surface = SDL_RenderReadPixels(renderer, nullptr);
+    bool passed = surface != nullptr;
+    if (surface) {
+        passed &= pixel_near(surface, projection.tile_center({2, 2}), {132, 70, 42, 255});
+        passed &= pixel_near(surface, projection.tile_center({4, 2}), {20, 90, 160, 255});
+        passed &= pixel_near(surface, projection.tile_center({3, 3}), {190, 35, 70, 255});
+        passed &= pixel_near(surface, projection.tile_center({5, 3}), {5, 9, 14, 255});
+        passed &= pixel_near(surface, {unit_top.x + 50, unit_top.y + 20}, {245, 245, 220, 255});
+        passed &= SDL_SaveBMP(surface, output.string().c_str());
+        SDL_DestroySurface(surface);
+    }
+    SDL_DestroyTexture(units.texture);
+    SDL_DestroyTexture(texture.texture);
+    SDL_DestroyTexture(terrain.texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    if (!passed)
+        std::cerr << "synthetic screenshot pixels did not match the expected layer composition\n";
+    return passed ? 0 : 1;
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -410,6 +530,8 @@ int main(int argc, char** argv) {
                   << SDL_MICRO_VERSION << " (SDL)\n";
         return 0;
     }
+    if (argc == 3 && std::string_view(argv[1]) == "--synthetic-screenshot")
+        return render_synthetic_screenshot(argv[2]);
     const bool screenshot = argc == 5 && std::string_view(argv[3]) == "--screenshot";
     if ((argc != 3 && !screenshot) || std::string_view(argv[1]) != "--data-dir") {
         std::cerr << "usage: smac-native --data-dir DIR [--screenshot FILE]\n";
