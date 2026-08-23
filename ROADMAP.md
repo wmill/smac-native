@@ -33,28 +33,27 @@ Last reconciled with the repository: 2026-08-22.
 - [x] Bounded `TERRANMAP` reader for known header, landmark, tile, and region data
 - [x] Staggered map coordinates, horizontal wrapping, polar boundaries, and neighbors
 - [x] Owned game state with `MoveUnit`/`EndTurn` commands, events, and a stable state hash
-- [x] Deterministic bounded pathfinding and a minimal movement-cost implementation
-- [x] Resizable HiDPI SDL window, schematic map, panning, zoom, selection, HUD, and a debug unit
+- [x] Deterministic bounded pathfinding and unit-aware movement costs, domains, ZOC, and transport
+- [x] Authentic indexed-PCX Planet rendering with cached textures, culling, HiDPI picking, HUD, and
+  a selectable native unit
 - [x] `verify-data`, `dump-rules`, and `inspect-map` CLI commands
 - [x] GPL licensing plus initial format and OpenSMACX provenance notes
 
-**In progress / incomplete slices**
+**Next incomplete slices**
 
 - The rules reader identifies sections and decodes the road movement rate; it does not yet build a
   complete typed `RulesDatabase` or parse faction definitions.
-- The map client uses colored rectangles. It loads `Units.pcx`, but does not yet compose authentic
-  terrain from `ter1.pcx` or apply complete palette/transparency rules.
-- Movement supports an adjacent land unit and roads only. It does not yet model unit abilities,
-  terrain, rivers, mag tubes, sea/air movement, zones of control, or transport.
-- Tests cover the initial boundaries and deterministic replay logs. Oracle comparisons and screenshot
-  tests have not been added.
+- Read-only original `.SC`/`.SAV` import and the user-run Windows oracle have not been started.
+- CVR vehicle assembly, prototypes, combat, bases, economy, AI, and complete-match systems remain in
+  M3 through M6.
+- The SDL client is an authentic map-and-movement slice, not yet a complete game UI.
 
 ## Milestone map
 
 | Milestone | Outcome | Status |
 |---|---|---|
 | M0 Foundation | Portable build, owned state, bounded input, basic tools | Complete |
-| M1 Authentic map slice | Original-looking map and faithful single-unit movement | In progress |
+| M1 Authentic map slice | Original-looking map and faithful single-unit movement | Complete |
 | M2 Compatibility fixtures | Typed rules plus read-only scenario/save import | Not started |
 | M3 Units and combat | Prototypes, workshops, combat, morale, damage, transport | Not started |
 | M4 Bases and economy | Bases, yields, production, growth, research, terraforming | Not started |
@@ -92,30 +91,33 @@ Goal: make the existing interactive prototype a faithful, useful walking skeleto
 
 ### Formats and rendering
 
-- [ ] Describe terrain and unit atlas regions, animation frames, palettes, and transparency in
+- [x] Describe terrain and unit atlas regions, animation frames, palettes, and transparency in
   declarative metadata.
-- [ ] Preserve indexed PCX palettes and upload/cache textures without losing palette semantics.
-- [ ] Decode all tile fields needed to compose altitude, rainfall, rockiness, fungus, rivers,
+- [x] Preserve indexed PCX palettes and upload/cache textures without losing palette semantics.
+- [x] Decode all tile fields needed to compose altitude, rainfall, rockiness, fungus, rivers,
   resources, improvements, landmarks, and ownership overlays.
-- [ ] Compose `xplanet.MP` from authentic `ter1.pcx` art with correct layer ordering and seams.
-- [ ] Render explored/unexplored states, cursor, path preview, and unit selection distinctly.
-- [ ] Make screen-to-world picking exact at all zoom levels, map seams, and window densities.
-- [ ] Add texture caching, viewport culling, and stable frame times on the full Planet map.
+- [x] Compose `xplanet.MP` from authentic `ter1.pcx` art with correct layer ordering and seams.
+- [x] Render explored/unexplored states, cursor, path preview, and unit selection distinctly.
+- [x] Make screen-to-world picking exact at all zoom levels, map seams, and window densities.
+- [x] Add texture caching, viewport culling, and stable frame times on the full Planet map.
 
 ### Movement slice
 
-- [ ] Model chassis/domain and movement allowance instead of a hard-coded land unit.
-- [ ] Recover movement costs for terrain, fungus, rivers, roads, and mag tubes.
-- [ ] Enforce poles, wrapping, zones of control, occupancy, embarkation, and domain restrictions.
-- [ ] Preview routes without moving; confirm movement separately and report rejection reasons in UI.
-- [ ] Queue command events for animation rather than mutating through mouse handling.
-- [ ] Restore movement deterministically at the correct turn boundary.
+- [x] Model chassis/domain and movement allowance instead of a hard-coded land unit.
+- [x] Recover movement costs for terrain, fungus, rivers, roads, and mag tubes.
+- [x] Enforce poles, wrapping, zones of control, occupancy, embarkation, and domain restrictions.
+- [x] Preview routes without moving; confirm movement separately and report rejection reasons in UI.
+- [x] Queue command events for animation rather than mutating through mouse handling.
+- [x] Restore movement deterministically at the correct turn boundary.
 
 ### Acceptance
 
-- [ ] Add topology, movement-cost, malformed-map, coordinate-picking, and screenshot tests.
-- [ ] Render `xplanet.MP` correctly with user-owned assets on Apple Silicon and x86-64 Linux.
-- [ ] Select and move a native Gaian unit only along legal paths, then refresh it with End Turn.
+- [x] Add topology, movement-cost, malformed-map, coordinate-picking, and screenshot tests.
+- [x] Render `xplanet.MP` correctly with user-owned assets on Apple Silicon and x86-64 Linux.
+- [x] Select and move a native Gaian unit only along legal paths, then refresh it with End Turn.
+
+Acceptance evidence and reproducible commands are recorded in
+[`docs/acceptance/M1.md`](docs/acceptance/M1.md).
 
 Exit gate: this is the original first interactive milestone—authentic Planet rendering and faithful,
 test-covered movement for one unit, with no combat or economy yet.
@@ -335,5 +337,5 @@ When a change lands:
    here if it changes sequencing or scope.
 5. Prefer small issues that close one checkbox or a clearly named part of one checkbox.
 
-The immediate critical path is **M1 authentic terrain and movement → M2 typed rules/imports → M3
-combat → M4 economy → M5 AI/game setup → M6 complete match**.
+The immediate critical path is **M2 typed rules/imports → M3 combat → M4 economy → M5 AI/game
+setup → M6 complete match**.
