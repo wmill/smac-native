@@ -15,6 +15,7 @@ cmake --build --preset dev --target format-check
 build/dev/smac-tool verify-data --data-dir /path/to/smac_extracted
 build/dev/smac-tool inspect-map /path/to/smac_extracted/maps/xplanet.MP
 build/dev/smac-native --data-dir /path/to/smac_extracted
+build/dev/smac-native --data-dir /path/to/smac_extracted --acceptance-check
 build/dev/smac-native --data-dir /path/to/smac_extracted --benchmark-frames 120
 ```
 

@@ -438,6 +438,77 @@ sf::IndexedImage synthetic_atlas(std::uint8_t background) {
     return image;
 }
 
+int run_acceptance_check(sc::GameState& game) {
+    auto& unit = game.units().front();
+    const auto origin = unit.position;
+    std::optional<sc::MapPosition> destination;
+    for (const auto neighbor : game.map().neighbors(origin)) {
+        const auto evaluation = sc::evaluate_move(game, unit, origin, neighbor);
+        if (evaluation.legal() && evaluation.cost > 0 &&
+            evaluation.cost <= unit.movement_remaining) {
+            destination = neighbor;
+            break;
+        }
+    }
+    if (!destination) {
+        std::cerr << "acceptance check found no legal positive-cost move from the spawn tile\n";
+        return 1;
+    }
+
+    const auto before_preview = game.stable_hash();
+    const auto preview = sc::find_path(game, unit.id, *destination, unit.movement_remaining);
+    if (preview.size() != 2 || preview.front() != origin || preview.back() != *destination ||
+        game.stable_hash() != before_preview) {
+        std::cerr << "acceptance check route preview was invalid or mutated game state\n";
+        return 1;
+    }
+
+    const auto move_events = game.apply(sc::MoveUnit{unit.id, *destination});
+    const auto* moved = move_events.empty() ? nullptr : std::get_if<sc::UnitMoved>(&move_events[0]);
+    if (!moved || moved->from != origin || moved->to != *destination || moved->cost <= 0 ||
+        unit.position != *destination || unit.movement_remaining >= unit.movement_max) {
+        std::cerr << "acceptance check did not confirm the previewed move\n";
+        return 1;
+    }
+
+    std::optional<sc::MapPosition> illegal;
+    const auto adjacent = game.map().neighbors(unit.position);
+    for (int y = 0; y < game.map().height() && !illegal; ++y) {
+        for (int x = y & 1; x < game.map().width(); x += 2) {
+            const sc::MapPosition candidate{x, y};
+            if (candidate != unit.position &&
+                std::find(adjacent.begin(), adjacent.end(), candidate) == adjacent.end()) {
+                illegal = candidate;
+                break;
+            }
+        }
+    }
+    if (!illegal) {
+        std::cerr << "acceptance check found no non-adjacent destination\n";
+        return 1;
+    }
+    const auto position_before_rejection = unit.position;
+    const auto rejected = game.apply(sc::MoveUnit{unit.id, *illegal});
+    if (rejected.empty() || !std::holds_alternative<sc::CommandRejected>(rejected[0]) ||
+        unit.position != position_before_rejection) {
+        std::cerr << "acceptance check failed to reject a non-adjacent destination\n";
+        return 1;
+    }
+
+    unit.movement_remaining = 0;
+    const auto turn_events = game.apply(sc::EndTurn{});
+    if (turn_events.empty() || !std::holds_alternative<sc::TurnAdvanced>(turn_events[0]) ||
+        game.turn() != 2 || unit.movement_remaining != unit.movement_max) {
+        std::cerr << "acceptance check End Turn did not restore movement\n";
+        return 1;
+    }
+    std::cout << "acceptance OK: previewed and moved native unit " << unit.id << " from "
+              << origin.x << ',' << origin.y << " to " << destination->x << ',' << destination->y
+              << "; rejected illegal move; turn " << game.turn() << " restored "
+              << unit.movement_remaining << " MP\n";
+    return 0;
+}
+
 bool pixel_near(SDL_Surface* surface, sc::ScreenPoint point, SDL_Color expected) {
     Uint8 red = 0;
     Uint8 green = 0;
@@ -533,6 +604,7 @@ int main(int argc, char** argv) {
     }
     if (argc == 3 && std::string_view(argv[1]) == "--synthetic-screenshot")
         return render_synthetic_screenshot(argv[2]);
+    const bool acceptance = argc == 4 && std::string_view(argv[3]) == "--acceptance-check";
     const bool screenshot = argc == 5 && std::string_view(argv[3]) == "--screenshot";
     const bool benchmark = argc == 5 && std::string_view(argv[3]) == "--benchmark-frames";
     std::uint32_t benchmark_frames = 0;
@@ -546,9 +618,10 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    if ((argc != 3 && !screenshot && !benchmark) || std::string_view(argv[1]) != "--data-dir") {
+    if ((argc != 3 && !acceptance && !screenshot && !benchmark) ||
+        std::string_view(argv[1]) != "--data-dir") {
         std::cerr << "usage: smac-native --data-dir DIR [--screenshot FILE | "
-                     "--benchmark-frames COUNT]\n";
+                     "--benchmark-frames COUNT | --acceptance-check]\n";
         return 2;
     }
     const std::filesystem::path data_dir = argv[2];
@@ -598,6 +671,8 @@ int main(int argc, char** argv) {
     }
     game.units().push_back(
         sc::make_unit(1, 1, *spawn, sc::Chassis::native_life, sc::Domain::land, game.rules()));
+    if (acceptance)
+        return run_acceptance_check(game);
 
     if (!SDL_Init(SDL_INIT_VIDEO) || !TTF_Init()) {
         std::cerr << SDL_GetError() << '\n';
