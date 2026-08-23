@@ -41,7 +41,8 @@ int main() {
     for (auto& t : map.tiles())
         t.terrain = sc::Terrain::land;
     sc::GameState state(std::move(map));
-    state.units().push_back({7, 1, {0, 0}, 3, 3});
+    state.units().push_back(
+        sc::make_unit(7, 1, {0, 0}, sc::Chassis::infantry, sc::Domain::land, state.rules()));
     auto events = state.apply(sc::MoveUnit{7, {6, 0}});
     CHECK(std::holds_alternative<sc::UnitMoved>(events[0]));
     CHECK(state.units()[0].movement_remaining == 0);
@@ -61,24 +62,25 @@ int main() {
     for (auto& tile : replay_map.tiles())
         tile.terrain = sc::Terrain::land;
     sc::GameState replay_start(std::move(replay_map), sc::RulesDatabase{3, {"RULES"}});
-    replay_start.units().push_back({7, 1, {0, 0}, 3, 3});
+    replay_start.units().push_back(
+        sc::make_unit(7, 1, {0, 0}, sc::Chassis::infantry, sc::Domain::land, replay_start.rules()));
     const std::array<sc::Command, 3> commands{sc::MoveUnit{7, {6, 0}}, sc::MoveUnit{7, {4, 0}},
                                               sc::EndTurn{}};
     const auto replay = sc::record_replay(replay_start, commands);
     const auto encoded_replay = sc::serialize_replay(replay);
     constexpr std::string_view expected_replay =
-        "SMAC_REPLAY 1\n"
-        "INITIAL 0d1c2186d2a26753\n"
+        "SMAC_REPLAY 2\n"
+        "INITIAL 941d15ff11c5b11a\n"
         "COMMAND MOVE 7 6 0\n"
         "EVENT UNIT_MOVED 7 0 0 6 0 3\n"
-        "STATE c6d23a9a3bef9cd6\n"
+        "STATE 2a91b1b7fd2f74ff\n"
         "COMMAND MOVE 7 4 0\n"
         "EVENT COMMAND_REJECTED "
         "696e73756666696369656e74206d6f76656d656e7420706f696e7473\n"
-        "STATE c6d23a9a3bef9cd6\n"
+        "STATE 2a91b1b7fd2f74ff\n"
         "COMMAND END_TURN\n"
         "EVENT TURN_ADVANCED 2\n"
-        "STATE 6f2b7fc60fcd513c\n"
+        "STATE 63f37ab46a66d6d5\n"
         "END\n";
     CHECK(encoded_replay == expected_replay);
     const auto decoded_replay = sc::parse_replay(encoded_replay);
@@ -91,12 +93,98 @@ int main() {
         CHECK(std::get<std::uint64_t>(result) == replay.entries.back().state_hash);
     }
     CHECK(std::holds_alternative<sc::ReplayError>(
-        sc::parse_replay("SMAC_REPLAY 2\nINITIAL 0000000000000000\nEND\n")));
+        sc::parse_replay("SMAC_REPLAY 99\nINITIAL 0000000000000000\nEND\n")));
     sc::WorldMap pathmap(8, 4, true);
     for (auto& t : pathmap.tiles())
         t.terrain = sc::Terrain::land;
-    CHECK(!sc::find_path(pathmap, {0, 0}, {2, 0}, 3).empty());
-    CHECK(sc::find_path(pathmap, {0, 0}, {4, 0}, 3).empty());
+    sc::GameState path_state(std::move(pathmap));
+    path_state.units().push_back(
+        sc::make_unit(1, 1, {0, 0}, sc::Chassis::infantry, sc::Domain::land, path_state.rules()));
+    CHECK(!sc::find_path(path_state, 1, {2, 0}, 3).empty());
+    CHECK(sc::find_path(path_state, 1, {4, 0}, 3).empty());
+    sc::WorldMap movement_map(8, 6, true);
+    for (auto& tile : movement_map.tiles())
+        tile.terrain = sc::Terrain::land;
+    sc::GameState movement(std::move(movement_map));
+    movement.units().push_back(
+        sc::make_unit(1, 1, {2, 2}, sc::Chassis::infantry, sc::Domain::land, movement.rules()));
+    auto& mover = movement.units()[0];
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 3);
+    movement.map().at({2, 2}).improvements = sc::tile_road;
+    movement.map().at({3, 3}).improvements = sc::tile_road;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 1);
+    movement.map().at({2, 2}).improvements = sc::tile_mag_tube;
+    movement.map().at({3, 3}).improvements = sc::tile_mag_tube;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 0);
+    movement.map().at({2, 2}).improvements = sc::tile_river;
+    movement.map().at({3, 3}).improvements = sc::tile_river;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 1);
+    movement.map().at({4, 2}).improvements = sc::tile_river;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {4, 2}).cost == 3);
+    movement.map().at({2, 2}).improvements = 0;
+    movement.map().at({3, 3}).improvements = 0;
+    movement.map().at({3, 3}).rockiness_code = 2;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 6);
+    movement.map().at({3, 3}).rockiness_code = 0;
+    movement.map().at({3, 3}).improvements = sc::tile_forest;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 6);
+    movement.map().at({3, 3}).improvements = sc::tile_fungus;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 9);
+    mover.native_life = true;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).cost == 1);
+    mover.native_life = false;
+    movement.map().at({3, 3}).improvements = 0;
+    movement.map().at({3, 3}).terrain = sc::Terrain::ocean;
+    CHECK(sc::evaluate_move(movement, mover, {2, 2}, {3, 3}).blocked ==
+          sc::MoveBlock::transport_required);
+    auto transport =
+        sc::make_unit(2, 1, {3, 3}, sc::Chassis::foil, sc::Domain::sea, movement.rules());
+    transport.transport_capacity = 1;
+    movement.units().push_back(transport);
+    CHECK(sc::evaluate_move(movement, movement.units()[0], {2, 2}, {3, 3}).legal());
+    movement.units().push_back(
+        sc::make_unit(3, 2, {1, 3}, sc::Chassis::infantry, sc::Domain::land, movement.rules()));
+    movement.map().at({3, 3}).terrain = sc::Terrain::land;
+    CHECK(sc::evaluate_move(movement, movement.units()[0], {2, 2}, {3, 3}).blocked ==
+          sc::MoveBlock::zone_of_control);
+    movement.units().push_back(
+        sc::make_unit(4, 2, {3, 3}, sc::Chassis::infantry, sc::Domain::land, movement.rules()));
+    CHECK(sc::evaluate_move(movement, movement.units()[0], {2, 2}, {3, 3}).blocked ==
+          sc::MoveBlock::hostile_occupied);
+    sc::WorldMap domain_map(8, 4, true);
+    sc::GameState domains(std::move(domain_map));
+    domains.units().push_back(
+        sc::make_unit(10, 1, {0, 0}, sc::Chassis::foil, sc::Domain::sea, domains.rules()));
+    CHECK(sc::evaluate_move(domains, domains.units()[0], {0, 0}, {2, 0}).legal());
+    domains.map().at({2, 0}).terrain = sc::Terrain::land;
+    CHECK(sc::evaluate_move(domains, domains.units()[0], {0, 0}, {2, 0}).blocked ==
+          sc::MoveBlock::wrong_domain);
+    auto aircraft =
+        sc::make_unit(11, 1, {0, 0}, sc::Chassis::needlejet, sc::Domain::air, domains.rules());
+    CHECK(sc::movement_allowance(aircraft, domains.rules()) == 24);
+    CHECK(sc::evaluate_move(domains, aircraft, {0, 0}, {2, 0}).legal());
+    auto speeder =
+        sc::make_unit(12, 1, {0, 0}, sc::Chassis::speeder, sc::Domain::land, domains.rules());
+    speeder.movement_remaining = 0;
+    domains.units().push_back(speeder);
+    domains.apply(sc::EndTurn{});
+    CHECK(domains.units().back().movement_remaining == 6);
+    sc::WorldMap embark_map(8, 6, true);
+    for (auto& tile : embark_map.tiles())
+        tile.terrain = sc::Terrain::land;
+    embark_map.at({3, 3}).terrain = sc::Terrain::ocean;
+    embark_map.at({4, 2}).terrain = sc::Terrain::ocean;
+    sc::GameState embark(std::move(embark_map));
+    embark.units().push_back(
+        sc::make_unit(20, 1, {2, 2}, sc::Chassis::infantry, sc::Domain::land, embark.rules()));
+    auto carrier = sc::make_unit(21, 1, {3, 3}, sc::Chassis::foil, sc::Domain::sea, embark.rules());
+    carrier.transport_capacity = 1;
+    embark.units().push_back(carrier);
+    CHECK(std::holds_alternative<sc::UnitMoved>(embark.apply(sc::MoveUnit{20, {3, 3}})[0]));
+    CHECK(embark.units()[0].embarked_on == 21);
+    const auto carried_events = embark.apply(sc::MoveUnit{21, {4, 2}});
+    CHECK(carried_events.size() == 2);
+    CHECK((embark.units()[0].position == sc::MapPosition{4, 2}));
     auto rules = sf::parse_rules("; hello\r\n#RULES\r\n3, ; roads\r\n## translator comment\r\nnot "
                                  "data\r\n#THING\r\nName, 2\r\n# ; end\r\n");
     CHECK(sf::ok(rules));

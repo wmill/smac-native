@@ -6,7 +6,7 @@
 #include <string_view>
 
 namespace smac::core {
-inline constexpr std::uint32_t replay_format_version = 1;
+inline constexpr std::uint32_t replay_format_version = 2;
 
 struct ReplayEntry {
     Command command;

@@ -1,6 +1,7 @@
 #include "smac/core/game_state.hpp"
 #include "smac/core/pathfinding.hpp"
 #include "smac/formats/data_directory.hpp"
+#include "smac/formats/rules.hpp"
 #include "smac/formats/terran_map.hpp"
 
 #include <SDL3/SDL.h>
@@ -34,7 +35,14 @@ int main(int argc, char** argv) {
         std::cerr << e->message << '\n';
         return 1;
     }
-    sc::GameState game(std::get<sf::TerranMap>(parsed).to_world_map());
+    const auto rules_path = sf::find_case_insensitive(argv[2], "alphax.txt");
+    auto parsed_rules = sf::load_rules(*rules_path);
+    if (auto* error = std::get_if<sf::Error>(&parsed_rules)) {
+        std::cerr << error->message << '\n';
+        return 1;
+    }
+    sc::GameState game(std::get<sf::TerranMap>(parsed).to_world_map(),
+                       std::get<sf::ParsedRules>(parsed_rules).database);
     sc::MapPosition spawn{};
     bool found = false;
     for (int y = 1; y < game.map().height() - 1 && !found; ++y)
@@ -44,7 +52,8 @@ int main(int argc, char** argv) {
                 found = true;
                 break;
             }
-    game.units().push_back({1, 1, spawn, 3, 3});
+    game.units().push_back(
+        sc::make_unit(1, 1, spawn, sc::Chassis::native_life, sc::Domain::land, game.rules()));
     if (!SDL_Init(SDL_INIT_VIDEO) || !TTF_Init()) {
         std::cerr << SDL_GetError() << '\n';
         return 1;
@@ -108,7 +117,7 @@ int main(int argc, char** argv) {
                     ++x;
                 if (auto p = game.map().normalize({x, y})) {
                     selected = *p;
-                    auto path = sc::find_path(game.map(), game.units()[0].position, *p,
+                    auto path = sc::find_path(game, game.units()[0].id, *p,
                                               game.units()[0].movement_remaining);
                     for (std::size_t i = 1; i < path.size(); ++i)
                         game.apply(sc::MoveUnit{1, path[i]});

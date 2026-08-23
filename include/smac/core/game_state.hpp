@@ -1,6 +1,7 @@
 #pragma once
 #include "smac/core/world_map.hpp"
 
+#include <string_view>
 #include <variant>
 
 namespace smac::core {
@@ -29,6 +30,25 @@ struct CommandRejected {
     friend bool operator==(const CommandRejected&, const CommandRejected&) = default;
 };
 using Event = std::variant<UnitMoved, TurnAdvanced, CommandRejected>;
+
+enum class MoveBlock : std::uint8_t {
+    none,
+    invalid_position,
+    not_adjacent,
+    wrong_domain,
+    hostile_occupied,
+    transport_required,
+    transport_full,
+    zone_of_control,
+};
+
+struct MoveEvaluation {
+    std::int32_t cost{-1};
+    MoveBlock blocked{MoveBlock::none};
+    [[nodiscard]] constexpr bool legal() const noexcept {
+        return blocked == MoveBlock::none;
+    }
+};
 
 class GameState {
   public:
@@ -61,5 +81,11 @@ class GameState {
     std::vector<Unit> units_;
     std::uint32_t turn_{1};
 };
-int movement_cost(const WorldMap& map, MapPosition from, MapPosition to);
+[[nodiscard]] std::int32_t movement_allowance(const Unit& unit,
+                                              const RulesDatabase& rules) noexcept;
+[[nodiscard]] Unit make_unit(UnitId id, FactionId faction, MapPosition position, Chassis chassis,
+                             Domain domain, const RulesDatabase& rules);
+[[nodiscard]] MoveEvaluation evaluate_move(const GameState& state, const Unit& unit,
+                                           MapPosition from, MapPosition to);
+[[nodiscard]] std::string_view move_block_reason(MoveBlock block) noexcept;
 } // namespace smac::core

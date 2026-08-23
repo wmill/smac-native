@@ -1,13 +1,13 @@
 # Native replay format
 
 SMAC Native replay logs are UTF-8, line-oriented files owned by this project. They are not an
-original SMACX format. Version 1 begins with `SMAC_REPLAY 1`, records the initial authoritative-state
+original SMACX format. Version 2 begins with `SMAC_REPLAY 2`, records the initial authoritative-state
 hash, and ends with `END`.
 
 Each command is followed by its emitted events and resulting state hash:
 
 ```text
-SMAC_REPLAY 1
+SMAC_REPLAY 2
 INITIAL 4469cf00895bd653
 COMMAND MOVE 7 6 0
 EVENT UNIT_MOVED 7 0 0 6 0 3
@@ -18,7 +18,7 @@ STATE 079bf6dc2b82843c
 END
 ```
 
-Command forms in version 1 are `MOVE <unit> <x> <y>` and `END_TURN`. Event forms are
+Command forms in version 2 are `MOVE <unit> <x> <y>` and `END_TURN`. Event forms are
 `UNIT_MOVED <unit> <from-x> <from-y> <to-x> <to-y> <cost>`, `TURN_ADVANCED <turn>`, and
 `COMMAND_REJECTED <hex-encoded-reason>`. Hex encoding makes arbitrary rejection text safe inside a
 single canonical line; `-` represents an empty reason.

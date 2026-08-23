@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -71,6 +72,19 @@ struct Tile {
 };
 using FactionId = std::uint8_t;
 using UnitId = std::uint32_t;
+enum class Domain : std::uint8_t { land, sea, air };
+enum class Chassis : std::uint8_t {
+    infantry,
+    speeder,
+    hovertank,
+    foil,
+    cruiser,
+    needlejet,
+    copter,
+    gravship,
+    missile,
+    native_life,
+};
 struct Faction {
     FactionId id{};
     std::string name;
@@ -81,6 +95,13 @@ struct Unit {
     MapPosition position{};
     std::int32_t movement_remaining{3};
     std::int32_t movement_max{3};
+    Domain domain{Domain::land};
+    Chassis chassis{Chassis::infantry};
+    bool native_life{};
+    bool antigrav{};
+    bool xenoempathy{};
+    std::uint8_t transport_capacity{};
+    std::optional<UnitId> embarked_on;
 };
 struct RulesDatabase {
     std::int32_t road_movement_rate{3};
