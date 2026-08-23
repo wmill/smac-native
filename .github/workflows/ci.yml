@@ -1,0 +1,12 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    strategy: {matrix: {os: [ubuntu-latest, macos-14]}}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - run: cmake --preset dev
+      - run: cmake --build --preset dev
+      - run: ctest --preset dev
