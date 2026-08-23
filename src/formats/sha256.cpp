@@ -19,10 +19,18 @@ std::optional<std::string> sha256_file(const std::filesystem::path& p) {
         0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
         0xc67178f2};
-    std::ifstream f(p, std::ios::binary);
+    constexpr std::streamoff max_hash_file_bytes = 256 * 1024 * 1024;
+    std::ifstream f(p, std::ios::binary | std::ios::ate);
     if (!f)
         return std::nullopt;
-    std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(f)), {});
+    const auto file_size = f.tellg();
+    if (file_size < 0 || file_size > max_hash_file_bytes)
+        return std::nullopt;
+    std::vector<std::uint8_t> d(static_cast<std::size_t>(file_size));
+    f.seekg(0);
+    f.read(reinterpret_cast<char*>(d.data()), file_size);
+    if (!f)
+        return std::nullopt;
     auto bits = static_cast<std::uint64_t>(d.size()) * 8;
     d.push_back(0x80);
     while (d.size() % 64 != 56)

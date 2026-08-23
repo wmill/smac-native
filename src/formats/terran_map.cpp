@@ -7,6 +7,8 @@
 #include <fstream>
 #include <limits>
 namespace smac::formats {
+static constexpr std::size_t max_map_bytes = 64 * 1024 * 1024;
+
 static std::uint32_t u32(std::span<const std::byte> b, std::size_t o) {
     return static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(b[o])) |
            (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(b[o + 1])) << 8U) |
@@ -16,6 +18,8 @@ static std::uint32_t u32(std::span<const std::byte> b, std::size_t o) {
 Result<TerranMap> parse_terran_map(std::span<const std::byte> b) {
     constexpr std::size_t envelope = 15, legacy = 2724, tile_size = 44;
     constexpr char magic[] = "TERRANMAP";
+    if (b.size() > max_map_bytes)
+        return Error{"TERRANMAP data exceeds size limit", max_map_bytes};
     if (b.size() < envelope + legacy)
         return Error{"truncated TERRANMAP header", b.size()};
     for (std::size_t i = 0; i < 9; ++i)
@@ -86,7 +90,7 @@ Result<TerranMap> load_terran_map(const std::filesystem::path& p) {
     if (!f)
         return Error{"cannot open map", 0};
     auto size = f.tellg();
-    if (size < 0 || size > 64 * 1024 * 1024)
+    if (size < 0 || size > static_cast<std::streamoff>(max_map_bytes))
         return Error{"map file size is invalid", 0};
     std::vector<std::byte> b(static_cast<std::size_t>(size));
     f.seekg(0);

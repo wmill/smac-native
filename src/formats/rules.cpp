@@ -50,12 +50,10 @@ Result<ParsedRules> parse_rules(std::string_view raw) {
                 continue;
             }
             section = std::move(candidate);
-            const bool inserted = out.sections.try_emplace(section).second;
-            if (inserted) {
-                if (out.sections.size() > max_rule_sections)
-                    return Error{"rules data has too many sections", number};
-                out.database.section_names.push_back(section);
-            }
+            out.database.section_names.push_back(section);
+            if (out.database.section_names.size() > max_rule_sections)
+                return Error{"rules data has too many sections", number};
+            out.sections.try_emplace(section);
             continue;
         }
         if (section.empty())
