@@ -57,7 +57,7 @@ int main() {
     sc::GameState replay_start(std::move(replay_map), sc::RulesDatabase{3, {"RULES"}});
     replay_start.units().push_back({7, 1, {0, 0}, 3, 3});
     const std::array<sc::Command, 3> commands{sc::MoveUnit{7, {6, 0}}, sc::MoveUnit{7, {4, 0}},
-                                               sc::EndTurn{}};
+                                              sc::EndTurn{}};
     const auto replay = sc::record_replay(replay_start, commands);
     const auto encoded_replay = sc::serialize_replay(replay);
     constexpr std::string_view expected_replay =
@@ -96,6 +96,7 @@ int main() {
     CHECK(sf::ok(rules));
     CHECK(std::get<sf::ParsedRules>(rules).database.road_movement_rate == 3);
     CHECK(std::get<sf::ParsedRules>(rules).sections.size() == 2);
+    CHECK(!sf::ok(sf::parse_rules(std::string(64 * 1024 + 1, 'x'))));
     CHECK(sf::normalize_text(std::string("A\x97")) == "A\xE2\x80\x94");
     std::vector<std::byte> bytes(15 + 2724 + 4 * 44);
     const char magic[] = "TERRANMAP";

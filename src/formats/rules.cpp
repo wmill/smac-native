@@ -8,6 +8,11 @@
 #include <fstream>
 #include <sstream>
 namespace smac::formats {
+static constexpr std::size_t max_rules_bytes = 16 * 1024 * 1024;
+static constexpr std::size_t max_rule_line_bytes = 64 * 1024;
+static constexpr std::size_t max_rule_records = 250'000;
+static constexpr std::size_t max_rule_sections = 4096;
+
 static std::string trim(std::string_view v) {
     auto a = v.find_first_not_of(" \t");
     if (a == v.npos)
@@ -21,12 +26,17 @@ static bool section_name(std::string_view s) {
     });
 }
 Result<ParsedRules> parse_rules(std::string_view raw) {
+    if (raw.size() > max_rules_bytes)
+        return Error{"rules data exceeds size limit", max_rules_bytes};
     ParsedRules out;
     std::istringstream input(normalize_text(raw));
     std::string line, section;
     std::size_t number = 0;
+    std::size_t record_count = 0;
     while (std::getline(input, line)) {
         ++number;
+        if (line.size() > max_rule_line_bytes)
+            return Error{"rules line exceeds size limit", number};
         auto semicolon = line.find(';');
         if (semicolon != line.npos)
             line.erase(semicolon);
@@ -40,8 +50,12 @@ Result<ParsedRules> parse_rules(std::string_view raw) {
                 continue;
             }
             section = std::move(candidate);
-            out.database.section_names.push_back(section);
-            out.sections.try_emplace(section);
+            const bool inserted = out.sections.try_emplace(section).second;
+            if (inserted) {
+                if (out.sections.size() > max_rule_sections)
+                    return Error{"rules data has too many sections", number};
+                out.database.section_names.push_back(section);
+            }
             continue;
         }
         if (section.empty())
@@ -57,6 +71,8 @@ Result<ParsedRules> parse_rules(std::string_view raw) {
             start = comma + 1;
         } while (start <= line.size());
         out.sections[section].push_back(std::move(item));
+        if (++record_count > max_rule_records)
+            return Error{"rules data has too many records", number};
     }
     auto rules = out.sections.find("RULES");
     if (rules != out.sections.end() && !rules->second.empty() &&
@@ -71,11 +87,17 @@ Result<ParsedRules> parse_rules(std::string_view raw) {
     return out;
 }
 Result<ParsedRules> load_rules(const std::filesystem::path& p) {
-    std::ifstream f(p, std::ios::binary);
+    std::ifstream f(p, std::ios::binary | std::ios::ate);
     if (!f)
         return Error{"cannot open rules file", 0};
-    std::ostringstream b;
-    b << f.rdbuf();
-    return parse_rules(b.str());
+    const auto size = f.tellg();
+    if (size < 0 || size > static_cast<std::streamoff>(max_rules_bytes))
+        return Error{"rules file size is invalid", 0};
+    std::string contents(static_cast<std::size_t>(size), '\0');
+    f.seekg(0);
+    f.read(contents.data(), size);
+    if (!f)
+        return Error{"failed reading rules file", 0};
+    return parse_rules(contents);
 }
 } // namespace smac::formats

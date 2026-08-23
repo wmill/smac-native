@@ -1,0 +1,1 @@
+Synthetic CRLF and CP1252 normalization seed.

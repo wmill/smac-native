@@ -1,6 +1,16 @@
 name: ci
 on: [push, pull_request]
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install clang-format==18.1.8
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - run: cmake --preset dev
+      - run: cmake --build --preset dev --target format-check
   build:
     strategy: {matrix: {os: [ubuntu-latest, macos-14]}}
     runs-on: ${{ matrix.os }}
@@ -10,3 +20,23 @@ jobs:
       - run: cmake --preset dev
       - run: cmake --build --preset dev
       - run: ctest --preset dev
+  sdl-client:
+    strategy: {matrix: {os: [ubuntu-latest, macos-14]}}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - run: cmake --preset sdl-ci
+      - run: cmake --build --preset sdl-ci --target smac-native
+      - run: ctest --test-dir build/sdl-ci --output-on-failure -R smac_native_sdl_smoke
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - run: cmake --preset fuzz
+      - run: cmake --build --preset fuzz --target fuzz_rules fuzz_text fuzz_terran_map fuzz_replay
+      - run: build/fuzz/fuzz_rules -runs=2000 fuzz/corpus/rules
+      - run: build/fuzz/fuzz_text -runs=2000 fuzz/corpus/text
+      - run: build/fuzz/fuzz_terran_map -runs=2000 fuzz/corpus/terran_map
+      - run: build/fuzz/fuzz_replay -runs=2000 fuzz/corpus/replay

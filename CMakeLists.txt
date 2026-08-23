@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(SMAC_BUILD_CLIENT "Build the SDL client when SDL3 is available" ON)
 option(SMAC_FETCH_DEPENDENCIES "Download pinned SDL dependencies" OFF)
 option(SMAC_ENABLE_SANITIZERS "Enable address and undefined-behaviour sanitizers" OFF)
+option(SMAC_BUILD_FUZZERS "Build libFuzzer targets for input readers" OFF)
+option(SMAC_REQUIRE_SDL "Fail configuration when the graphical SDL client is unavailable" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ProjectWarnings)
@@ -50,6 +52,9 @@ if(SMAC_HAVE_SDL)
   add_executable(smac-native src/client/sdl_main.cpp)
   target_link_libraries(smac-native PRIVATE smac_formats SDL3::SDL3 SDL3_image::SDL3_image SDL3_ttf::SDL3_ttf)
 else()
+  if(SMAC_REQUIRE_SDL)
+    message(FATAL_ERROR "SMAC_REQUIRE_SDL is ON but SDL3, SDL3_image, or SDL3_ttf is unavailable")
+  endif()
   add_executable(smac-native src/client/stub_main.cpp)
   target_link_libraries(smac-native PRIVATE smac_formats)
   message(STATUS "SDL3 not found: smac-native will explain how to enable the graphical client")
@@ -62,6 +67,49 @@ if(BUILD_TESTING)
   target_link_libraries(smac_tests PRIVATE smac_formats)
   smac_set_warnings(smac_tests)
   add_test(NAME smac_tests COMMAND smac_tests)
+  if(SMAC_HAVE_SDL)
+    add_test(NAME smac_native_sdl_smoke COMMAND smac-native --version)
+  endif()
+endif()
+
+file(GLOB_RECURSE SMAC_FORMAT_FILES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.cpp")
+find_program(SMAC_CLANG_FORMAT_EXECUTABLE NAMES clang-format)
+if(SMAC_CLANG_FORMAT_EXECUTABLE)
+  add_custom_target(format
+    COMMAND ${SMAC_CLANG_FORMAT_EXECUTABLE} -i ${SMAC_FORMAT_FILES}
+    COMMAND_EXPAND_LISTS VERBATIM)
+  add_custom_target(format-check
+    COMMAND ${SMAC_CLANG_FORMAT_EXECUTABLE} --dry-run --Werror ${SMAC_FORMAT_FILES}
+    COMMAND_EXPAND_LISTS VERBATIM)
+else()
+  add_custom_target(format
+    COMMAND ${CMAKE_COMMAND} -E echo "clang-format is required for the format target"
+    COMMAND ${CMAKE_COMMAND} -E false)
+  add_custom_target(format-check
+    COMMAND ${CMAKE_COMMAND} -E echo "clang-format is required for the format-check target"
+    COMMAND ${CMAKE_COMMAND} -E false)
+endif()
+
+if(SMAC_BUILD_FUZZERS)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "SMAC_BUILD_FUZZERS requires Clang and libFuzzer")
+  endif()
+  foreach(target smac_core smac_formats)
+    target_compile_options(${target} PRIVATE -fsanitize=fuzzer-no-link,address,undefined
+      -fno-omit-frame-pointer)
+  endforeach()
+  foreach(reader rules text terran_map replay)
+    add_executable(fuzz_${reader} fuzz/fuzz_${reader}.cpp)
+    target_link_libraries(fuzz_${reader} PRIVATE smac_formats)
+    target_compile_options(fuzz_${reader} PRIVATE -fsanitize=fuzzer,address,undefined
+      -fno-omit-frame-pointer)
+    target_link_options(fuzz_${reader} PRIVATE -fsanitize=fuzzer,address,undefined)
+    smac_set_warnings(fuzz_${reader})
+  endforeach()
 endif()
 
 if(SMAC_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

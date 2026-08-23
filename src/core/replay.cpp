@@ -123,8 +123,7 @@ ReplayResult<Event> parse_event(std::string_view text) {
         parse_number(parts[6], moved.cost))
         return Event{moved};
     TurnAdvanced advanced;
-    if (parts.size() == 2 && parts[0] == "TURN_ADVANCED" &&
-        parse_number(parts[1], advanced.turn))
+    if (parts.size() == 2 && parts[0] == "TURN_ADVANCED" && parse_number(parts[1], advanced.turn))
         return Event{advanced};
     if (parts.size() == 2 && parts[0] == "COMMAND_REJECTED") {
         CommandRejected rejected;

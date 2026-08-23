@@ -3,8 +3,10 @@
   "configurePresets": [
     {"name":"dev","generator":"Ninja","binaryDir":"${sourceDir}/build/dev","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","CMAKE_EXPORT_COMPILE_COMMANDS":"ON","BUILD_TESTING":"ON"}},
     {"name":"asan","inherits":"dev","binaryDir":"${sourceDir}/build/asan","cacheVariables":{"SMAC_ENABLE_SANITIZERS":"ON"}},
-    {"name":"release","generator":"Ninja","binaryDir":"${sourceDir}/build/release","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","CMAKE_EXPORT_COMPILE_COMMANDS":"ON","BUILD_TESTING":"ON"}}
+    {"name":"release","generator":"Ninja","binaryDir":"${sourceDir}/build/release","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","CMAKE_EXPORT_COMPILE_COMMANDS":"ON","BUILD_TESTING":"ON"}},
+    {"name":"sdl-ci","inherits":"dev","binaryDir":"${sourceDir}/build/sdl-ci","cacheVariables":{"SMAC_FETCH_DEPENDENCIES":"ON","SMAC_REQUIRE_SDL":"ON"}},
+    {"name":"fuzz","generator":"Ninja","binaryDir":"${sourceDir}/build/fuzz","cacheVariables":{"CMAKE_BUILD_TYPE":"RelWithDebInfo","CMAKE_CXX_COMPILER":"clang++","SMAC_BUILD_CLIENT":"OFF","SMAC_BUILD_FUZZERS":"ON","BUILD_TESTING":"OFF"}}
   ],
-  "buildPresets": [{"name":"dev","configurePreset":"dev"},{"name":"asan","configurePreset":"asan"},{"name":"release","configurePreset":"release"}],
+  "buildPresets": [{"name":"dev","configurePreset":"dev"},{"name":"asan","configurePreset":"asan"},{"name":"release","configurePreset":"release"},{"name":"sdl-ci","configurePreset":"sdl-ci"},{"name":"fuzz","configurePreset":"fuzz"}],
   "testPresets": [{"name":"dev","configurePreset":"dev","output":{"outputOnFailure":true}},{"name":"asan","configurePreset":"asan","output":{"outputOnFailure":true}}]
 }

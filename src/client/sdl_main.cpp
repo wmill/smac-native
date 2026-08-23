@@ -8,10 +8,17 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
 #include <iostream>
+#include <string>
+#include <string_view>
 #include <variant>
 namespace sc = smac::core;
 namespace sf = smac::formats;
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--version") {
+        std::cout << "smac-native " << SDL_MAJOR_VERSION << '.' << SDL_MINOR_VERSION << '.'
+                  << SDL_MICRO_VERSION << " (SDL)\n";
+        return 0;
+    }
     if (argc != 3 || std::string(argv[1]) != "--data-dir") {
         std::cerr << "usage: smac-native --data-dir DIR\n";
         return 2;

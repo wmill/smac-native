@@ -1,0 +1,5 @@
+; Synthetic parser seed. This is not original game data.
+#RULES
+3, ; road movement rate
+#UNITS
+Scout, 1, 2
