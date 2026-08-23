@@ -1,5 +1,6 @@
 #include "smac/core/game_state.hpp"
 #include "smac/core/pathfinding.hpp"
+#include "smac/core/replay.hpp"
 #include "smac/formats/data_directory.hpp"
 #include "smac/formats/rules.hpp"
 #include "smac/formats/terran_map.hpp"
@@ -43,6 +44,48 @@ int main() {
     CHECK(state.turn() == 2 && state.units()[0].movement_remaining == 3);
     auto hash = state.stable_hash();
     CHECK(hash == state.stable_hash());
+    auto changed_map = state;
+    changed_map.map().at({0, 0}).improvements = 99;
+    CHECK(changed_map.stable_hash() != hash);
+    auto changed_rules = state;
+    changed_rules = sc::GameState(changed_rules.map(), sc::RulesDatabase{5, {"RULES"}});
+    changed_rules.units() = state.units();
+    CHECK(changed_rules.stable_hash() != hash);
+    sc::WorldMap replay_map(8, 4, true);
+    for (auto& tile : replay_map.tiles())
+        tile.terrain = sc::Terrain::land;
+    sc::GameState replay_start(std::move(replay_map), sc::RulesDatabase{3, {"RULES"}});
+    replay_start.units().push_back({7, 1, {0, 0}, 3, 3});
+    const std::array<sc::Command, 3> commands{sc::MoveUnit{7, {6, 0}}, sc::MoveUnit{7, {4, 0}},
+                                               sc::EndTurn{}};
+    const auto replay = sc::record_replay(replay_start, commands);
+    const auto encoded_replay = sc::serialize_replay(replay);
+    constexpr std::string_view expected_replay =
+        "SMAC_REPLAY 1\n"
+        "INITIAL 4469cf00895bd653\n"
+        "COMMAND MOVE 7 6 0\n"
+        "EVENT UNIT_MOVED 7 0 0 6 0 3\n"
+        "STATE fe1fe813f2a90bd6\n"
+        "COMMAND MOVE 7 4 0\n"
+        "EVENT COMMAND_REJECTED "
+        "696e73756666696369656e74206d6f76656d656e7420706f696e7473\n"
+        "STATE fe1fe813f2a90bd6\n"
+        "COMMAND END_TURN\n"
+        "EVENT TURN_ADVANCED 2\n"
+        "STATE 079bf6dc2b82843c\n"
+        "END\n";
+    CHECK(encoded_replay == expected_replay);
+    const auto decoded_replay = sc::parse_replay(encoded_replay);
+    CHECK(std::holds_alternative<sc::ReplayLog>(decoded_replay));
+    if (const auto* decoded = std::get_if<sc::ReplayLog>(&decoded_replay)) {
+        CHECK(*decoded == replay);
+        auto replayed_state = replay_start;
+        const auto result = sc::replay_commands(replayed_state, *decoded);
+        CHECK(std::holds_alternative<std::uint64_t>(result));
+        CHECK(std::get<std::uint64_t>(result) == replay.entries.back().state_hash);
+    }
+    CHECK(std::holds_alternative<sc::ReplayError>(
+        sc::parse_replay("SMAC_REPLAY 2\nINITIAL 0000000000000000\nEND\n")));
     sc::WorldMap pathmap(8, 4, true);
     for (auto& t : pathmap.tiles())
         t.terrain = sc::Terrain::land;

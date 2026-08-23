@@ -33,5 +33,6 @@ struct Unit {
 struct RulesDatabase {
     std::int32_t road_movement_rate{3};
     std::vector<std::string> section_names;
+    friend bool operator==(const RulesDatabase&, const RulesDatabase&) = default;
 };
 } // namespace smac::core

@@ -27,6 +27,9 @@ class WorldMap {
     [[nodiscard]] std::span<Tile> tiles() noexcept {
         return tiles_;
     }
+    [[nodiscard]] std::span<const Tile> tiles() const noexcept {
+        return tiles_;
+    }
 
   private:
     std::int32_t width_{};

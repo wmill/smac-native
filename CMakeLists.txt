@@ -12,7 +12,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ProjectWarnings)
 
 add_library(smac_core
-  src/core/world_map.cpp src/core/game_state.cpp src/core/pathfinding.cpp)
+  src/core/world_map.cpp src/core/game_state.cpp src/core/pathfinding.cpp src/core/replay.cpp)
 target_include_directories(smac_core PUBLIC include)
 smac_set_warnings(smac_core)
 

@@ -51,15 +51,38 @@ std::uint64_t GameState::stable_hash() const noexcept {
             v >>= 8;
         }
     };
+    auto add_string = [&](std::string_view value) {
+        add(value.size());
+        for (char raw : value) {
+            const auto c = static_cast<unsigned char>(raw);
+            h ^= c;
+            h *= 1099511628211ULL;
+        }
+    };
+    add(1); // Hash schema version.
     add(turn_);
     add(static_cast<std::uint64_t>(map_.width()));
     add(static_cast<std::uint64_t>(map_.height()));
+    add(map_.wraps());
+    for (const auto& tile : map_.tiles()) {
+        add(static_cast<std::uint8_t>(tile.terrain));
+        add(tile.climate);
+        add(tile.contour);
+        add(tile.region);
+        add(tile.improvements);
+    }
+    add(static_cast<std::uint32_t>(rules_.road_movement_rate));
+    add(rules_.section_names.size());
+    for (const auto& section : rules_.section_names)
+        add_string(section);
+    add(units_.size());
     for (const auto& u : units_) {
         add(u.id);
         add(u.faction);
         add(static_cast<std::uint32_t>(u.position.x));
         add(static_cast<std::uint32_t>(u.position.y));
         add(static_cast<std::uint32_t>(u.movement_remaining));
+        add(static_cast<std::uint32_t>(u.movement_max));
     }
     return h;
 }

@@ -7,26 +7,33 @@ namespace smac::core {
 struct MoveUnit {
     UnitId unit{};
     MapPosition destination{};
+    friend bool operator==(const MoveUnit&, const MoveUnit&) = default;
 };
-struct EndTurn {};
+struct EndTurn {
+    friend bool operator==(const EndTurn&, const EndTurn&) = default;
+};
 using Command = std::variant<MoveUnit, EndTurn>;
 struct UnitMoved {
     UnitId unit{};
     MapPosition from{};
     MapPosition to{};
     std::int32_t cost{};
+    friend bool operator==(const UnitMoved&, const UnitMoved&) = default;
 };
 struct TurnAdvanced {
     std::uint32_t turn{};
+    friend bool operator==(const TurnAdvanced&, const TurnAdvanced&) = default;
 };
 struct CommandRejected {
     std::string reason;
+    friend bool operator==(const CommandRejected&, const CommandRejected&) = default;
 };
 using Event = std::variant<UnitMoved, TurnAdvanced, CommandRejected>;
 
 class GameState {
   public:
-    explicit GameState(WorldMap map) : map_(std::move(map)) {}
+    explicit GameState(WorldMap map, RulesDatabase rules = {})
+        : map_(std::move(map)), rules_(std::move(rules)) {}
     WorldMap& map() noexcept {
         return map_;
     }
@@ -42,11 +49,15 @@ class GameState {
     [[nodiscard]] std::uint32_t turn() const noexcept {
         return turn_;
     }
+    [[nodiscard]] const RulesDatabase& rules() const noexcept {
+        return rules_;
+    }
     std::vector<Event> apply(const Command& command);
     [[nodiscard]] std::uint64_t stable_hash() const noexcept;
 
   private:
     WorldMap map_;
+    RulesDatabase rules_;
     std::vector<Unit> units_;
     std::uint32_t turn_{1};
 };
