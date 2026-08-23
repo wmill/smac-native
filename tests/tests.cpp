@@ -9,6 +9,7 @@
 #include "smac/formats/terran_map.hpp"
 #include "smac/formats/text.hpp"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>

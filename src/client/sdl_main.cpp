@@ -337,7 +337,7 @@ void draw_tile(SDL_Renderer* renderer, const sc::GameState& game,
     draw_terrain_sprite(sc::tile_mine, std::string("mine") + land_suffix);
     draw_terrain_sprite(sc::tile_solar, std::string("solar") + land_suffix);
     draw_terrain_sprite(sc::tile_soil_enricher, "soil_enricher");
-    for (const auto [flag, name] : std::array{
+    for (const auto& [flag, name] : std::array{
              std::pair{sc::tile_bunker, std::string_view{"bunker"}},
              std::pair{sc::tile_airbase, std::string_view{"airbase"}},
              std::pair{sc::tile_sensor, std::string_view{"sensor"}},
