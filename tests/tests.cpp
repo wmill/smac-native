@@ -63,6 +63,15 @@ int main() {
         CHECK((sc::screen_to_world(map, projection, seam) == sc::MapPosition{6, 2}));
         CHECK(!sc::screen_to_world(map, projection, projection.tile_center({0, -2})));
     }
+    sc::MapProjection zoomed_projection{37.25, -11.5, 1.0};
+    const sc::ScreenPoint zoom_anchor{640.0, 400.0};
+    const auto center_before_zoom = zoomed_projection.tile_center({2, 2});
+    zoomed_projection.set_zoom_around(1.75, zoom_anchor);
+    const auto center_after_zoom = zoomed_projection.tile_center({2, 2});
+    CHECK(std::abs(center_after_zoom.x -
+                   (zoom_anchor.x + (center_before_zoom.x - zoom_anchor.x) * 1.75)) < 1e-9);
+    CHECK(std::abs(center_after_zoom.y -
+                   (zoom_anchor.y + (center_before_zoom.y - zoom_anchor.y) * 1.75)) < 1e-9);
     const sc::MapProjection culling_projection{0, 0, 1.0};
     const auto visible =
         sc::visible_tiles(map, culling_projection, sc::ScreenRect{-110, 0, 260, 120});

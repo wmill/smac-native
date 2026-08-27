@@ -248,6 +248,15 @@ const TerrainTileGeometry& TerrainGeometry::at(MapPosition position) const {
     return tiles_.at(index);
 }
 
+void MapProjection::set_zoom_around(double new_zoom, ScreenPoint anchor) noexcept {
+    if (zoom <= 0.0 || new_zoom <= 0.0)
+        return;
+    const auto scale = new_zoom / zoom;
+    origin_x = anchor.x + (origin_x - anchor.x) * scale;
+    origin_y = anchor.y + (origin_y - anchor.y) * scale;
+    zoom = new_zoom;
+}
+
 ScreenPoint MapProjection::tile_top_left(MapPosition unwrapped) const noexcept {
     return {origin_x + static_cast<double>(unwrapped.x) * tile_width * zoom / 2.0,
             origin_y + static_cast<double>(unwrapped.y) * tile_height * zoom / 2.0};

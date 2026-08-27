@@ -920,10 +920,14 @@ int main(int argc, char** argv) {
                     projection.origin_y -= 48.0;
                     break;
                 case SDLK_EQUALS:
-                    projection.zoom = std::min(2.5, projection.zoom + 0.25);
+                    projection.set_zoom_around(std::min(2.5, projection.zoom + 0.25),
+                                               {static_cast<double>(output_width) / 2.0,
+                                                static_cast<double>(output_height) / 2.0});
                     break;
                 case SDLK_MINUS:
-                    projection.zoom = std::max(0.5, projection.zoom - 0.25);
+                    projection.set_zoom_around(std::max(0.5, projection.zoom - 0.25),
+                                               {static_cast<double>(output_width) / 2.0,
+                                                static_cast<double>(output_height) / 2.0});
                     break;
                 case SDLK_V:
                     reveal_all = !reveal_all;
@@ -977,7 +981,10 @@ int main(int argc, char** argv) {
                 }
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL)
-                projection.zoom = std::clamp(projection.zoom + event.wheel.y * 0.25, 0.5, 2.5);
+                projection.set_zoom_around(
+                    std::clamp(projection.zoom + event.wheel.y * 0.25, 0.5, 2.5),
+                    {static_cast<double>(output_width) / 2.0,
+                     static_cast<double>(output_height) / 2.0});
         }
 
         const auto now = SDL_GetTicks();

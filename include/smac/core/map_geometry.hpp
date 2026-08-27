@@ -61,6 +61,7 @@ struct MapProjection {
     double sprite_height{62.0};
     double elevation_units_per_tile_height{1750.0};
 
+    void set_zoom_around(double new_zoom, ScreenPoint anchor) noexcept;
     [[nodiscard]] ScreenPoint tile_top_left(MapPosition unwrapped) const noexcept;
     [[nodiscard]] ScreenPoint tile_center(MapPosition unwrapped) const noexcept;
 };
