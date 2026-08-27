@@ -248,6 +248,7 @@ std::uint64_t GameState::stable_hash() const noexcept {
     add(turn_);
     add(static_cast<std::uint64_t>(map_.width()));
     add(static_cast<std::uint64_t>(map_.height()));
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(map_.sea_level())));
     add(map_.wraps());
     for (const auto& tile : map_.tiles()) {
         add(static_cast<std::uint8_t>(tile.terrain));

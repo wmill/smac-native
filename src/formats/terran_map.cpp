@@ -29,10 +29,11 @@ Result<TerranMap> parse_terran_map(std::span<const std::byte> b) {
     m.width = static_cast<std::int32_t>(u32(b, 15));
     m.height = static_cast<std::int32_t>(u32(b, 19));
     m.seed = u32(b, 23);
+    m.sea_level = static_cast<std::int32_t>(u32(b, 27));
     if (m.width <= 0 || m.height <= 0 || (m.width & 1) || m.width > 2048 || m.height > 2048)
         return Error{"implausible map dimensions", 15};
     std::copy_n(b.begin() + envelope, legacy, m.legacy_header.begin());
-    m.flat = u32(b, 31) != 0;
+    m.flat = u32(b, 43) != 0;
     auto lm_count = static_cast<std::int32_t>(u32(b, 47));
     if (lm_count < 0 || lm_count > 64)
         return Error{"invalid landmark count", 47};
@@ -100,7 +101,7 @@ Result<TerranMap> load_terran_map(const std::filesystem::path& p) {
     return parse_terran_map(b);
 }
 smac::core::WorldMap TerranMap::to_world_map() const {
-    smac::core::WorldMap out(width, height, !flat);
+    smac::core::WorldMap out(width, height, !flat, sea_level);
     for (std::size_t i = 0; i < tiles.size(); ++i) {
         auto& d = out.tiles()[i];
         auto& s = tiles[i];

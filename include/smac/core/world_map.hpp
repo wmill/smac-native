@@ -15,7 +15,8 @@ inline constexpr std::array adjacent_offsets{
 
 class WorldMap {
   public:
-    WorldMap(std::int32_t width, std::int32_t height, bool wraps = true);
+    WorldMap(std::int32_t width, std::int32_t height, bool wraps = true,
+             std::int32_t sea_level = 0);
     [[nodiscard]] std::int32_t width() const noexcept {
         return width_;
     }
@@ -24,6 +25,9 @@ class WorldMap {
     }
     [[nodiscard]] bool wraps() const noexcept {
         return wraps_;
+    }
+    [[nodiscard]] std::int32_t sea_level() const noexcept {
+        return sea_level_;
     }
     [[nodiscard]] bool valid(MapPosition p) const noexcept;
     [[nodiscard]] std::optional<MapPosition> normalize(MapPosition p) const noexcept;
@@ -42,6 +46,7 @@ class WorldMap {
     std::int32_t width_{};
     std::int32_t height_{};
     bool wraps_{};
+    std::int32_t sea_level_{};
     std::vector<Tile> tiles_;
 };
 } // namespace smac::core

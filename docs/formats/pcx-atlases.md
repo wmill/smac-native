@@ -12,18 +12,19 @@ horizontal stride. Animation and connectivity variants are represented as a base
 count, grid width, and strides rather than repeated rendering constants.
 
 Transparency is palette-index based, not an RGB comparison. In the observed stock SMACX sheets,
-`ter1.pcx` uses index 253 for its empty background and index 254 for cyan guides, while `texture.pcx`
-uses index 255. The selected `Units.pcx` lifecycle cells require both indices 253 and 255 to be keyed;
-their cyan guides remain outside the declared rectangles. Palette RGB values are preserved even for
-transparent pixels because index identity, palette ramps, and user-modified sheets must remain
-distinguishable.
+`ter1.pcx` uses index 253 for its primary empty background, index 255 for the dark diamond guides
+inside object cells, index 254 for cyan guides, and some object cells use index 252 for the inner
+diamond background. The renderer keys the reserved 252–255
+guide/background range for terrain, texture, and lifecycle atlas draws so those construction marks
+do not become warped map geometry. Palette RGB values are preserved even for transparent pixels
+because index identity, palette ramps, and user-modified sheets must remain distinguishable.
 
 The current declarative regions cover M1 water and rainfall surfaces, fungus, rockiness, resources,
 improvements, pods, forest/jungle/river connectivity variants, eight-direction road/tube links, and
-the native lifecycle frames. The client warps each 56×56 surface into the projected tile diamond,
-then layers rockiness, farms, forest/jungle, fungus, rivers, transport links, `ter1.pcx` objects,
-ownership, route/cursor overlays, and units in that order. Full-sheet SDL textures are uploaded once
-and reused; viewport culling limits composition to visible wrapped copies.
+the native lifecycle frames. The client warps each 56×56 surface over a five-vertex ground mesh,
+then composes planar water, `ter1.pcx` objects, ownership, route/cursor overlays, fog, and units.
+Full-sheet SDL textures are uploaded once and reused; viewport culling limits composition to visible
+wrapped copies.
 
 Coordinates were checked against the user-owned GOG SMACX sheets and corroborated against the
 coordinate tables in the independent AGPL GLSMAC renderer. No original pixels are present in the

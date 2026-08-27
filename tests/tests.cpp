@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -69,6 +70,42 @@ int main() {
     CHECK(std::any_of(visible.begin(), visible.end(), [](const sc::VisibleTile& tile) {
         return tile.position == sc::MapPosition{6, 0} && tile.unwrapped.x == -2;
     }));
+    sc::WorldMap relief_map(8, 6, true);
+    for (auto& tile : relief_map.tiles()) {
+        tile.terrain = sc::Terrain::land;
+        tile.climate = 0x60;
+        tile.contour = 60;
+    }
+    relief_map.at({2, 2}).climate = 0xA0;
+    relief_map.at({2, 2}).contour = 100;
+    CHECK(sc::terrain_elevation(relief_map, {0, 0}) == 10);
+    CHECK(sc::terrain_elevation(relief_map, {2, 2}) == 2010);
+    const sc::TerrainGeometry relief_geometry(relief_map);
+    const auto center = static_cast<std::size_t>(sc::TerrainVertex::center);
+    const auto right = static_cast<std::size_t>(sc::TerrainVertex::right);
+    const auto left = static_cast<std::size_t>(sc::TerrainVertex::left);
+    CHECK(std::abs(relief_geometry.at({2, 2}).elevations[center] -
+                   relief_geometry.at({4, 2}).elevations[center]) <= 650.0);
+    CHECK(relief_geometry.at({2, 2}).elevations[right] ==
+          relief_geometry.at({4, 2}).elevations[left]);
+    const auto projected_hill =
+        sc::project_terrain_tile(relief_map, relief_geometry, culling_projection, {2, 2});
+    CHECK(projected_hill.points[0].y < culling_projection.tile_center({2, 2}).y);
+    CHECK((sc::screen_to_world(relief_map, relief_geometry, culling_projection,
+                               projected_hill.points[0]) == sc::MapPosition{2, 2}));
+    relief_map.at({4, 2}).terrain = sc::Terrain::ocean;
+    relief_map.at({4, 2}).climate = 0x40;
+    relief_map.at({4, 2}).contour = 35;
+    const sc::TerrainGeometry coast_geometry(relief_map);
+    CHECK(coast_geometry.at({2, 2}).elevations[right] == 0.0);
+    CHECK(coast_geometry.at({4, 2}).elevations[left] == 0.0);
+    const auto water_surface = sc::project_terrain_tile(
+        relief_map, coast_geometry, culling_projection, {4, 2}, sc::TerrainSurface::visible);
+    CHECK(std::all_of(water_surface.elevations.begin(), water_surface.elevations.end(),
+                      [](double elevation) { return elevation == 0.0; }));
+    for (const auto& normal : coast_geometry.at({2, 2}).normals)
+        CHECK(std::abs(std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z) -
+                       1.0) < 1e-9);
     for (auto& t : map.tiles())
         t.terrain = sc::Terrain::land;
     sc::GameState state(std::move(map));
@@ -101,17 +138,17 @@ int main() {
     const auto encoded_replay = sc::serialize_replay(replay);
     constexpr std::string_view expected_replay =
         "SMAC_REPLAY 2\n"
-        "INITIAL 941d15ff11c5b11a\n"
+        "INITIAL 8b20a5024692999a\n"
         "COMMAND MOVE 7 6 0\n"
         "EVENT UNIT_MOVED 7 0 0 6 0 3\n"
-        "STATE 2a91b1b7fd2f74ff\n"
+        "STATE 219540bb31fc5d7f\n"
         "COMMAND MOVE 7 4 0\n"
         "EVENT COMMAND_REJECTED "
         "696e73756666696369656e74206d6f76656d656e7420706f696e7473\n"
-        "STATE 2a91b1b7fd2f74ff\n"
+        "STATE 219540bb31fc5d7f\n"
         "COMMAND END_TURN\n"
         "EVENT TURN_ADVANCED 2\n"
-        "STATE 63f37ab46a66d6d5\n"
+        "STATE 493187c3c39566f5\n"
         "END\n";
     CHECK(encoded_replay == expected_replay);
     const auto decoded_replay = sc::parse_replay(encoded_replay);
@@ -266,16 +303,21 @@ int main() {
     put32(bytes, 15, 4);
     put32(bytes, 19, 2);
     put32(bytes, 23, 42);
-    for (std::size_t i = 15 + 2724; i < bytes.size(); i += 44)
+    put32(bytes, 27, 7);
+    put32(bytes, 43, 1);
+    for (std::size_t i = 15 + 2724; i < bytes.size(); i += 44) {
         bytes[i] = std::byte{0x80};
+        bytes[i + 1] = std::byte{100};
+    }
     auto tm = sf::parse_terran_map(bytes);
     CHECK(sf::ok(tm));
     if (sf::ok(tm)) {
         auto& m = std::get<sf::TerranMap>(tm);
-        CHECK(m.tiles.size() == 4 && m.seed == 42);
+        CHECK(m.tiles.size() == 4 && m.seed == 42 && m.sea_level == 7 && m.flat);
         const auto decoded = m.to_world_map().at({0, 0});
         CHECK(decoded.terrain == sc::Terrain::land);
         CHECK(decoded.altitude() == 4);
+        CHECK(m.to_world_map().sea_level() == 7 && !m.to_world_map().wraps());
     }
     bytes.resize(30);
     CHECK(!sf::ok(sf::parse_terran_map(bytes)));

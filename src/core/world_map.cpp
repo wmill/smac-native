@@ -3,8 +3,8 @@
 #include <stdexcept>
 
 namespace smac::core {
-WorldMap::WorldMap(std::int32_t width, std::int32_t height, bool wraps)
-    : width_(width), height_(height), wraps_(wraps) {
+WorldMap::WorldMap(std::int32_t width, std::int32_t height, bool wraps, std::int32_t sea_level)
+    : width_(width), height_(height), wraps_(wraps), sea_level_(sea_level) {
     if (width <= 0 || height <= 0 || (width & 1) != 0)
         throw std::invalid_argument("map width must be positive and even");
     tiles_.resize(static_cast<std::size_t>(width / 2) * static_cast<std::size_t>(height));

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
@@ -91,7 +92,8 @@ AtlasTexture create_atlas_texture(SDL_Renderer* renderer, const sf::IndexedImage
 }
 
 void draw_region(SDL_Renderer* renderer, const AtlasTexture& atlas, const sf::AtlasRegion& region,
-                 std::uint8_t frame, sc::ScreenPoint top_left, float width, float height) {
+                 std::uint8_t frame, sc::ScreenPoint top_left, float width, float height,
+                 SDL_FColor color = {1.0F, 1.0F, 1.0F, 1.0F}) {
     if (!atlas.texture)
         return;
     const auto source = sf::atlas_frame(region, frame);
@@ -99,53 +101,138 @@ void draw_region(SDL_Renderer* renderer, const AtlasTexture& atlas, const sf::At
                         static_cast<float>(source.width), static_cast<float>(source.height)};
     const SDL_FRect destination{static_cast<float>(top_left.x), static_cast<float>(top_left.y),
                                 width, height};
+    SDL_SetTextureColorModFloat(atlas.texture, color.r, color.g, color.b);
+    SDL_SetTextureAlphaModFloat(atlas.texture, color.a);
     SDL_RenderTexture(renderer, atlas.texture, &src, &destination);
+    SDL_SetTextureColorModFloat(atlas.texture, 1.0F, 1.0F, 1.0F);
+    SDL_SetTextureAlphaModFloat(atlas.texture, 1.0F);
 }
 
 void draw_named_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
                        std::span<const sf::AtlasRegion> regions, std::string_view name,
-                       std::uint8_t frame, sc::ScreenPoint top_left, float width, float height) {
+                       std::uint8_t frame, sc::ScreenPoint top_left, float width, float height,
+                       SDL_FColor color = {1.0F, 1.0F, 1.0F, 1.0F}) {
     if (const auto* region = sf::find_region(regions, name))
-        draw_region(renderer, atlas, *region, frame, top_left, width, height);
+        draw_region(renderer, atlas, *region, frame, top_left, width, height, color);
 }
 
-void draw_diamond_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
+constexpr auto terrain_vertex_count = static_cast<std::size_t>(sc::TerrainVertex::count);
+using VertexColors = std::array<SDL_FColor, terrain_vertex_count>;
+
+constexpr VertexColors white_vertex_colors() {
+    VertexColors colors{};
+    colors.fill({1.0F, 1.0F, 1.0F, 1.0F});
+    return colors;
+}
+
+SDL_FColor lit_color(sc::TerrainNormal normal, SDL_FColor tint) {
+    struct Light {
+        sc::TerrainNormal direction;
+        std::array<float, 3> color;
+    };
+    constexpr std::array lights{
+        Light{{48.227, 20.412, 57.65}, {1.6F, 1.8F, 2.0F}},
+        Light{{22.412, 62.227, 43.35}, {2.0F, 1.8F, 1.6F}},
+    };
+    std::array<float, 3> illumination{};
+    for (const auto& light : lights) {
+        const auto length = std::sqrt(light.direction.x * light.direction.x +
+                                      light.direction.y * light.direction.y +
+                                      light.direction.z * light.direction.z);
+        const auto diffuse = static_cast<float>(
+            std::max(0.0, (normal.x * light.direction.x + normal.y * light.direction.y +
+                           normal.z * light.direction.z) /
+                              length));
+        for (std::size_t channel = 0; channel < illumination.size(); ++channel)
+            illumination[channel] += diffuse * light.color[channel] / lights.size();
+    }
+    constexpr float gamma = 1.1F;
+    constexpr float contrast = 0.1F;
+    return {std::clamp(tint.r * illumination[0] * gamma - contrast, 0.0F, 1.0F),
+            std::clamp(tint.g * illumination[1] * gamma - contrast, 0.0F, 1.0F),
+            std::clamp(tint.b * illumination[2] * gamma - contrast, 0.0F, 1.0F), tint.a};
+}
+
+VertexColors lit_colors(const sc::ProjectedTerrainTile& tile, const VertexColors& tints) {
+    VertexColors colors{};
+    for (std::size_t i = 0; i < colors.size(); ++i)
+        colors[i] = lit_color(tile.normals[i], tints[i]);
+    return colors;
+}
+
+void draw_terrain_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
                          const sf::AtlasRegion& region, std::uint8_t frame,
-                         const sc::MapProjection& projection, sc::MapPosition unwrapped) {
+                         const sc::ProjectedTerrainTile& tile, const VertexColors& tints) {
     if (!atlas.texture || !atlas.image)
         return;
     const auto source = sf::atlas_frame(region, frame);
-    const auto top = projection.tile_top_left(unwrapped);
-    const auto width = static_cast<float>(projection.tile_width * projection.zoom);
-    const auto height = static_cast<float>(projection.tile_height * projection.zoom);
     const auto image_width = static_cast<float>(atlas.image->width);
     const auto image_height = static_cast<float>(atlas.image->height);
-    const auto left = static_cast<float>(source.x) / image_width;
-    const auto right = static_cast<float>(source.x + source.width) / image_width;
-    const auto upper = static_cast<float>(source.y) / image_height;
-    const auto lower = static_cast<float>(source.y + source.height) / image_height;
-    constexpr SDL_FColor white{1.0F, 1.0F, 1.0F, 1.0F};
-    const std::array<SDL_Vertex, 4> vertices{{
-        {{static_cast<float>(top.x + width / 2), static_cast<float>(top.y)}, white, {left, upper}},
-        {{static_cast<float>(top.x + width), static_cast<float>(top.y + height / 2)},
-         white,
-         {right, upper}},
-        {{static_cast<float>(top.x + width / 2), static_cast<float>(top.y + height)},
-         white,
-         {right, lower}},
-        {{static_cast<float>(top.x), static_cast<float>(top.y + height / 2)}, white, {left, lower}},
+    const auto left = static_cast<float>(source.x + 1) / image_width;
+    const auto right = static_cast<float>(source.x + source.width - 2) / image_width;
+    const auto upper = static_cast<float>(source.y + 1) / image_height;
+    const auto lower = static_cast<float>(source.y + source.height - 2) / image_height;
+    const auto middle_x = (left + right) / 2.0F;
+    const auto middle_y = (upper + lower) / 2.0F;
+    const auto colors = lit_colors(tile, tints);
+    const auto vertex = [&](sc::TerrainVertex which, SDL_FPoint texture) {
+        const auto i = static_cast<std::size_t>(which);
+        return SDL_Vertex{
+            {static_cast<float>(tile.points[i].x), static_cast<float>(tile.points[i].y)},
+            colors[i],
+            texture};
+    };
+    const std::array<SDL_Vertex, terrain_vertex_count> vertices{{
+        vertex(sc::TerrainVertex::center, {middle_x, middle_y}),
+        vertex(sc::TerrainVertex::top, {middle_x, upper}),
+        vertex(sc::TerrainVertex::right, {right, middle_y}),
+        vertex(sc::TerrainVertex::bottom, {middle_x, lower}),
+        vertex(sc::TerrainVertex::left, {left, middle_y}),
     }};
-    constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+    constexpr std::array<int, 12> indices{0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1};
     SDL_RenderGeometry(renderer, atlas.texture, vertices.data(), vertices.size(), indices.data(),
                        indices.size());
 }
 
-void draw_named_diamond_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
+void draw_named_terrain_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
                                std::span<const sf::AtlasRegion> regions, std::string_view name,
-                               std::uint8_t frame, const sc::MapProjection& projection,
-                               sc::MapPosition unwrapped) {
+                               std::uint8_t frame, const sc::ProjectedTerrainTile& tile,
+                               const VertexColors& tints = white_vertex_colors()) {
     if (const auto* region = sf::find_region(regions, name))
-        draw_diamond_region(renderer, atlas, *region, frame, projection, unwrapped);
+        draw_terrain_region(renderer, atlas, *region, frame, tile, tints);
+}
+
+void draw_planar_region(SDL_Renderer* renderer, const AtlasTexture& atlas,
+                        const sf::AtlasRegion& region, std::uint8_t frame,
+                        const sc::ProjectedTerrainTile& tile, const VertexColors& tints) {
+    if (!atlas.texture || !atlas.image)
+        return;
+    const auto source = sf::atlas_frame(region, frame);
+    const auto image_width = static_cast<float>(atlas.image->width);
+    const auto image_height = static_cast<float>(atlas.image->height);
+    const auto left = static_cast<float>(source.x + 1) / image_width;
+    const auto right = static_cast<float>(source.x + source.width - 2) / image_width;
+    const auto upper = static_cast<float>(source.y + 1) / image_height;
+    const auto lower = static_cast<float>(source.y + source.height - 2) / image_height;
+    const auto middle_x = (left + right) / 2.0F;
+    const auto middle_y = (upper + lower) / 2.0F;
+    const auto colors = lit_colors(tile, tints);
+    const auto vertex = [&](sc::TerrainVertex which, SDL_FPoint texture) {
+        const auto i = static_cast<std::size_t>(which);
+        return SDL_Vertex{
+            {static_cast<float>(tile.points[i].x), static_cast<float>(tile.points[i].y)},
+            colors[i],
+            texture};
+    };
+    const std::array vertices{
+        vertex(sc::TerrainVertex::top, {middle_x, upper}),
+        vertex(sc::TerrainVertex::right, {right, middle_y}),
+        vertex(sc::TerrainVertex::bottom, {middle_x, lower}),
+        vertex(sc::TerrainVertex::left, {left, middle_y}),
+    };
+    constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+    SDL_RenderGeometry(renderer, atlas.texture, vertices.data(), vertices.size(), indices.data(),
+                       indices.size());
 }
 
 std::uint8_t tile_variant(sc::MapPosition position, std::uint8_t frames) {
@@ -173,42 +260,39 @@ std::uint8_t connectivity_frame(const sc::WorldMap& map, sc::MapPosition positio
     return frame;
 }
 
-void draw_diamond(SDL_Renderer* renderer, const sc::MapProjection& projection,
-                  sc::MapPosition unwrapped, SDL_Color color) {
-    const auto top = projection.tile_top_left(unwrapped);
-    const auto width = static_cast<float>(projection.tile_width * projection.zoom);
-    const auto height = static_cast<float>(projection.tile_height * projection.zoom);
+void draw_terrain_outline(SDL_Renderer* renderer, const sc::ProjectedTerrainTile& tile,
+                          SDL_Color color) {
+    const auto& projected_points = tile.points;
     const std::array<SDL_FPoint, 5> points{{
-        {static_cast<float>(top.x + width / 2), static_cast<float>(top.y)},
-        {static_cast<float>(top.x + width), static_cast<float>(top.y + height / 2)},
-        {static_cast<float>(top.x + width / 2), static_cast<float>(top.y + height)},
-        {static_cast<float>(top.x), static_cast<float>(top.y + height / 2)},
-        {static_cast<float>(top.x + width / 2), static_cast<float>(top.y)},
+        {static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::top)].x),
+         static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::top)].y)},
+        {static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::right)].x),
+         static_cast<float>(
+             projected_points[static_cast<std::size_t>(sc::TerrainVertex::right)].y)},
+        {static_cast<float>(
+             projected_points[static_cast<std::size_t>(sc::TerrainVertex::bottom)].x),
+         static_cast<float>(
+             projected_points[static_cast<std::size_t>(sc::TerrainVertex::bottom)].y)},
+        {static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::left)].x),
+         static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::left)].y)},
+        {static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::top)].x),
+         static_cast<float>(projected_points[static_cast<std::size_t>(sc::TerrainVertex::top)].y)},
     }};
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     SDL_RenderLines(renderer, points.data(), points.size());
 }
 
-void fill_diamond(SDL_Renderer* renderer, const sc::MapProjection& projection,
-                  sc::MapPosition unwrapped, SDL_Color color) {
-    const auto top = projection.tile_top_left(unwrapped);
-    const auto width = static_cast<float>(projection.tile_width * projection.zoom);
-    const auto height = static_cast<float>(projection.tile_height * projection.zoom);
+void fill_terrain(SDL_Renderer* renderer, const sc::ProjectedTerrainTile& tile, SDL_Color color) {
     constexpr auto channel_scale = 1.0F / 255.0F;
     const SDL_FColor float_color{
         static_cast<float>(color.r) * channel_scale, static_cast<float>(color.g) * channel_scale,
         static_cast<float>(color.b) * channel_scale, static_cast<float>(color.a) * channel_scale};
-    const std::array<SDL_Vertex, 4> vertices{{
-        {{static_cast<float>(top.x + width / 2), static_cast<float>(top.y)}, float_color, {}},
-        {{static_cast<float>(top.x + width), static_cast<float>(top.y + height / 2)},
-         float_color,
-         {}},
-        {{static_cast<float>(top.x + width / 2), static_cast<float>(top.y + height)},
-         float_color,
-         {}},
-        {{static_cast<float>(top.x), static_cast<float>(top.y + height / 2)}, float_color, {}},
-    }};
-    constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+    std::array<SDL_Vertex, terrain_vertex_count> vertices{};
+    for (std::size_t i = 0; i < vertices.size(); ++i)
+        vertices[i] = {{static_cast<float>(tile.points[i].x), static_cast<float>(tile.points[i].y)},
+                       float_color,
+                       {}};
+    constexpr std::array<int, 12> indices{0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1};
     SDL_RenderGeometry(renderer, nullptr, vertices.data(), vertices.size(), indices.data(),
                        indices.size());
 }
@@ -222,90 +306,177 @@ SDL_Color faction_color(std::int8_t faction) {
     return colors[static_cast<std::uint8_t>(faction) % colors.size()];
 }
 
+enum class TerrainPass { ground, water, objects, fog };
+
 void draw_tile(SDL_Renderer* renderer, const sc::GameState& game,
-               const sc::MapProjection& projection, const sc::VisibleTile& visible,
-               const AtlasTexture& terrain, const AtlasTexture& texture, bool reveal_all,
-               sc::FactionId viewing_faction) {
+               const sc::TerrainGeometry& geometry, const sc::MapProjection& projection,
+               const sc::VisibleTile& visible, const AtlasTexture& terrain,
+               const AtlasTexture& texture, bool reveal_all, sc::FactionId viewing_faction,
+               TerrainPass pass) {
     const auto& tile = game.map().at(visible.position);
     const bool explored =
         reveal_all || (tile.visibility & (1U << std::min<std::uint8_t>(viewing_faction, 7))) != 0U;
-    if (!explored) {
-        fill_diamond(renderer, projection, visible.unwrapped, {5, 9, 14, 255});
-        draw_diamond(renderer, projection, visible.unwrapped, {18, 29, 38, 255});
+    const auto ground = sc::project_terrain_tile(game.map(), geometry, projection,
+                                                 visible.unwrapped, sc::TerrainSurface::ground);
+    const auto surface = sc::project_terrain_tile(game.map(), geometry, projection,
+                                                  visible.unwrapped, sc::TerrainSurface::visible);
+    if (pass == TerrainPass::fog) {
+        if (!explored) {
+            fill_terrain(renderer, surface, {5, 9, 14, 255});
+            draw_terrain_outline(renderer, surface, {18, 29, 38, 255});
+        }
         return;
     }
-    const auto top = projection.tile_top_left(visible.unwrapped);
+    if (!explored)
+        return;
+
+    if (pass == TerrainPass::water) {
+        if (tile.terrain != sc::Terrain::ocean)
+            return;
+        VertexColors water_tints{};
+        const auto center = static_cast<std::size_t>(sc::TerrainVertex::center);
+        const auto depth = std::clamp(
+            static_cast<float>((ground.elevations[center] + 2000.0) / 2000.0), 0.0F, 1.0F);
+        water_tints.fill({0.6F + 0.4F * depth, 0.6F + 0.4F * depth, 0.8F + 0.2F * depth, 1.0F});
+        if (const auto* region = sf::find_region(sf::texture_atlas, "water_surface"))
+            draw_planar_region(renderer, texture, *region, 0, surface, water_tints);
+        if ((tile.improvements & sc::tile_fungus) != 0U) {
+            const auto frame =
+                connectivity_frame(game.map(), visible.position, [](const sc::Tile& neighbor) {
+                    return (neighbor.improvements & sc::tile_fungus) != 0U;
+                });
+            if (const auto* region = sf::find_region(sf::texture_atlas, "fungus_water"))
+                draw_planar_region(renderer, texture, *region, frame, surface,
+                                   white_vertex_colors());
+        }
+        return;
+    }
+
+    const auto center_index = static_cast<std::size_t>(sc::TerrainVertex::center);
+    const auto flat_center = projection.tile_center(visible.unwrapped);
+    const auto center_shift = surface.points[center_index].y - flat_center.y;
+    const auto base_top = projection.tile_top_left(visible.unwrapped);
+    const sc::ScreenPoint top{base_top.x, base_top.y + center_shift};
     const auto width = static_cast<float>(projection.tile_width * projection.zoom);
     const auto height = static_cast<float>(projection.sprite_height * projection.zoom);
-    std::string_view surface = "water_surface";
-    std::uint8_t surface_frame = 0;
-    if (tile.terrain == sc::Terrain::land) {
-        switch (tile.rainfall()) {
-        case sc::Rainfall::arid:
-        case sc::Rainfall::invalid:
-            surface = "arid";
-            break;
-        case sc::Rainfall::moist:
-            surface = "moist";
-            break;
-        case sc::Rainfall::rainy:
-            surface = "rainy";
-            break;
+
+    if (pass == TerrainPass::objects) {
+        const auto object_color = lit_color(surface.normals[center_index], {1, 1, 1, 1});
+        const auto land_suffix = tile.terrain == sc::Terrain::land ? "_land" : "_water";
+        const auto draw_terrain_sprite = [&](std::uint32_t flag, std::string name) {
+            if ((tile.improvements & flag) != 0U)
+                draw_named_region(renderer, terrain, sf::terrain_atlas, name, 0, top, width, height,
+                                  object_color);
+        };
+        draw_terrain_sprite(sc::tile_mine, std::string("mine") + land_suffix);
+        draw_terrain_sprite(sc::tile_solar, std::string("solar") + land_suffix);
+        draw_terrain_sprite(sc::tile_soil_enricher, "soil_enricher");
+        for (const auto& [flag, name] : std::array{
+                 std::pair{sc::tile_bunker, std::string_view{"bunker"}},
+                 std::pair{sc::tile_airbase, std::string_view{"airbase"}},
+                 std::pair{sc::tile_sensor, std::string_view{"sensor"}},
+                 std::pair{sc::tile_monolith, std::string_view{"monolith"}},
+                 std::pair{sc::tile_condenser, std::string_view{"condenser"}},
+                 std::pair{sc::tile_echelon_mirror, std::string_view{"echelon_mirror"}},
+                 std::pair{sc::tile_thermal_borehole, std::string_view{"thermal_borehole"}},
+             }) {
+            if ((tile.improvements & flag) != 0U)
+                draw_named_region(renderer, terrain, sf::terrain_atlas, name, 0, top, width, height,
+                                  object_color);
         }
-        if (tile.rainfall() == sc::Rainfall::moist || tile.rainfall() == sc::Rainfall::rainy) {
-            surface_frame =
-                connectivity_frame(game.map(), visible.position, [&](const sc::Tile& n) {
-                    return n.terrain == sc::Terrain::land &&
-                           static_cast<std::uint8_t>(n.rainfall()) >=
-                               static_cast<std::uint8_t>(tile.rainfall());
-                });
-        }
+        const auto resource_suffix = tile.terrain == sc::Terrain::land ? "_land" : "_water";
+        if ((tile.improvements & sc::tile_nutrient_resource) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas,
+                              std::string("resource_nutrient") + resource_suffix,
+                              tile_variant(visible.position, 2), top, width, height, object_color);
+        else if ((tile.improvements & sc::tile_mineral_resource) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas,
+                              std::string("resource_mineral") + resource_suffix,
+                              tile_variant(visible.position, 2), top, width, height, object_color);
+        else if ((tile.improvements & sc::tile_energy_resource) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas,
+                              std::string("resource_energy") + resource_suffix,
+                              tile_variant(visible.position, 2), top, width, height, object_color);
+        if ((tile.improvements & sc::tile_supply_pod) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas,
+                              std::string("supply_pod") + resource_suffix,
+                              tile_variant(visible.position, 3), top, width, height, object_color);
+        if ((tile.landmark & 0x8U) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas, "uranium", 0, top, width,
+                              height, object_color);
+        if ((tile.landmark & 0x400U) != 0U)
+            draw_named_region(renderer, terrain, sf::terrain_atlas, "geothermal", 0, top, width,
+                              height, object_color);
+        if (tile.territory >= 0)
+            draw_terrain_outline(renderer, surface, faction_color(tile.territory));
+        return;
     }
-    draw_named_diamond_region(renderer, texture, sf::texture_atlas, surface, surface_frame,
-                              projection, visible.unwrapped);
+
+    std::string_view surface_name = "arid";
+    std::uint8_t surface_frame = 0;
+    switch (tile.rainfall()) {
+    case sc::Rainfall::arid:
+    case sc::Rainfall::invalid:
+        break;
+    case sc::Rainfall::moist:
+        surface_name = "moist";
+        break;
+    case sc::Rainfall::rainy:
+        surface_name = "rainy";
+        break;
+    }
+    if (tile.terrain == sc::Terrain::land &&
+        (tile.rainfall() == sc::Rainfall::moist || tile.rainfall() == sc::Rainfall::rainy)) {
+        surface_frame = connectivity_frame(game.map(), visible.position, [&](const sc::Tile& n) {
+            return n.terrain == sc::Terrain::land && static_cast<std::uint8_t>(n.rainfall()) >=
+                                                         static_cast<std::uint8_t>(tile.rainfall());
+        });
+    }
+    auto ground_tints = white_vertex_colors();
+    if (tile.terrain == sc::Terrain::ocean)
+        ground_tints.fill({0.0F, 0.2F, 0.5F, 1.0F});
+    draw_named_terrain_region(renderer, texture, sf::texture_atlas, surface_name, surface_frame,
+                              ground, ground_tints);
 
     if (tile.rockiness() == sc::Rockiness::rolling || tile.rockiness() == sc::Rockiness::rocky) {
         const auto frame =
             static_cast<std::uint8_t>(tile_variant(visible.position, 2) * 2 +
                                       (tile.rockiness() == sc::Rockiness::rocky ? 1 : 0));
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "rocks", frame, projection,
-                                  visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "rocks", frame, ground,
+                                  ground_tints);
     }
     if ((tile.landmark & 0x40U) != 0U)
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "dunes", 0, projection,
-                                  visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "dunes", 0, ground,
+                                  ground_tints);
     if ((tile.improvements & (sc::tile_farm | sc::tile_soil_enricher)) != 0U)
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "farm",
-                                  tile_variant(visible.position, 9), projection, visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "farm",
+                                  tile_variant(visible.position, 9), ground, ground_tints);
     if ((tile.improvements & sc::tile_forest) != 0U) {
         const auto frame = connectivity_frame(game.map(), visible.position, [](const sc::Tile& n) {
             return (n.improvements & sc::tile_forest) != 0U;
         });
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "forest", frame, projection,
-                                  visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "forest", frame, ground,
+                                  ground_tints);
     }
     if ((tile.landmark & 0x4U) != 0U) {
         const auto frame = connectivity_frame(game.map(), visible.position, [](const sc::Tile& n) {
             return (n.landmark & 0x4U) != 0U;
         });
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "jungle", frame, projection,
-                                  visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "jungle", frame, ground,
+                                  ground_tints);
     }
-    if ((tile.improvements & sc::tile_fungus) != 0U) {
+    if (tile.terrain == sc::Terrain::land && (tile.improvements & sc::tile_fungus) != 0U) {
         const auto frame = connectivity_frame(game.map(), visible.position, [](const sc::Tile& n) {
             return (n.improvements & sc::tile_fungus) != 0U;
         });
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas,
-                                  tile.terrain == sc::Terrain::ocean ? "fungus_water"
-                                                                     : "fungus_land",
-                                  frame, projection, visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "fungus_land", frame,
+                                  ground);
     }
     if ((tile.improvements & sc::tile_river) != 0U) {
         const auto frame = connectivity_frame(game.map(), visible.position, [](const sc::Tile& n) {
             return (n.improvements & sc::tile_river) != 0U || n.terrain == sc::Terrain::ocean;
         });
-        draw_named_diamond_region(renderer, texture, sf::texture_atlas, "river", frame, projection,
-                                  visible.unwrapped);
+        draw_named_terrain_region(renderer, texture, sf::texture_atlas, "river", frame, ground);
     }
     const auto draw_network = [&](std::uint32_t flag, std::string_view name) {
         if ((tile.improvements & flag) == 0U)
@@ -317,62 +488,15 @@ void draw_tile(SDL_Renderer* renderer, const sc::GameState& game,
                 {visible.position.x + offset.x, visible.position.y + offset.y});
             if (!neighbor || (game.map().at(*neighbor).improvements & flag) == 0U)
                 continue;
-            draw_named_diamond_region(renderer, texture, sf::texture_atlas, name,
-                                      static_cast<std::uint8_t>(i + 1), projection,
-                                      visible.unwrapped);
+            draw_named_terrain_region(renderer, texture, sf::texture_atlas, name,
+                                      static_cast<std::uint8_t>(i + 1), ground);
             connected = true;
         }
         if (!connected)
-            draw_named_diamond_region(renderer, texture, sf::texture_atlas, name, 0, projection,
-                                      visible.unwrapped);
+            draw_named_terrain_region(renderer, texture, sf::texture_atlas, name, 0, ground);
     };
     draw_network(sc::tile_road, "road");
     draw_network(sc::tile_mag_tube, "mag_tube");
-
-    const auto land_suffix = tile.terrain == sc::Terrain::land ? "_land" : "_water";
-    const auto draw_terrain_sprite = [&](std::uint32_t flag, std::string name) {
-        if ((tile.improvements & flag) != 0U)
-            draw_named_region(renderer, terrain, sf::terrain_atlas, name, 0, top, width, height);
-    };
-    draw_terrain_sprite(sc::tile_mine, std::string("mine") + land_suffix);
-    draw_terrain_sprite(sc::tile_solar, std::string("solar") + land_suffix);
-    draw_terrain_sprite(sc::tile_soil_enricher, "soil_enricher");
-    for (const auto& [flag, name] : std::array{
-             std::pair{sc::tile_bunker, std::string_view{"bunker"}},
-             std::pair{sc::tile_airbase, std::string_view{"airbase"}},
-             std::pair{sc::tile_sensor, std::string_view{"sensor"}},
-             std::pair{sc::tile_monolith, std::string_view{"monolith"}},
-             std::pair{sc::tile_condenser, std::string_view{"condenser"}},
-             std::pair{sc::tile_echelon_mirror, std::string_view{"echelon_mirror"}},
-             std::pair{sc::tile_thermal_borehole, std::string_view{"thermal_borehole"}},
-         }) {
-        if ((tile.improvements & flag) != 0U)
-            draw_named_region(renderer, terrain, sf::terrain_atlas, name, 0, top, width, height);
-    }
-    const auto resource_suffix = tile.terrain == sc::Terrain::land ? "_land" : "_water";
-    if ((tile.improvements & sc::tile_nutrient_resource) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas,
-                          std::string("resource_nutrient") + resource_suffix,
-                          tile_variant(visible.position, 2), top, width, height);
-    else if ((tile.improvements & sc::tile_mineral_resource) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas,
-                          std::string("resource_mineral") + resource_suffix,
-                          tile_variant(visible.position, 2), top, width, height);
-    else if ((tile.improvements & sc::tile_energy_resource) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas,
-                          std::string("resource_energy") + resource_suffix,
-                          tile_variant(visible.position, 2), top, width, height);
-    if ((tile.improvements & sc::tile_supply_pod) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas,
-                          std::string("supply_pod") + resource_suffix,
-                          tile_variant(visible.position, 3), top, width, height);
-    if ((tile.landmark & 0x8U) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas, "uranium", 0, top, width, height);
-    if ((tile.landmark & 0x400U) != 0U)
-        draw_named_region(renderer, terrain, sf::terrain_atlas, "geothermal", 0, top, width,
-                          height);
-    if (tile.territory >= 0)
-        draw_diamond(renderer, projection, visible.unwrapped, faction_color(tile.territory));
 }
 
 std::string terrain_description(const sc::Tile& tile) {
@@ -518,9 +642,15 @@ bool pixel_near(SDL_Surface* surface, sc::ScreenPoint point, SDL_Color expected)
                               &green, &blue, &alpha))
         return false;
     constexpr int tolerance = 4;
-    return std::abs(static_cast<int>(red) - expected.r) <= tolerance &&
-           std::abs(static_cast<int>(green) - expected.g) <= tolerance &&
-           std::abs(static_cast<int>(blue) - expected.b) <= tolerance && alpha >= 250;
+    const bool matches = std::abs(static_cast<int>(red) - expected.r) <= tolerance &&
+                         std::abs(static_cast<int>(green) - expected.g) <= tolerance &&
+                         std::abs(static_cast<int>(blue) - expected.b) <= tolerance && alpha >= 250;
+    if (!matches)
+        std::cerr << "pixel " << static_cast<int>(point.x) << ',' << static_cast<int>(point.y)
+                  << " was " << static_cast<int>(red) << ',' << static_cast<int>(green) << ','
+                  << static_cast<int>(blue) << "; expected " << static_cast<int>(expected.r) << ','
+                  << static_cast<int>(expected.g) << ',' << static_cast<int>(expected.b) << '\n';
+    return matches;
 }
 
 int render_synthetic_screenshot(const std::filesystem::path& output) {
@@ -544,43 +674,66 @@ int render_synthetic_screenshot(const std::filesystem::path& output) {
         SDL_Quit();
         return 1;
     }
-    const auto terrain = create_atlas_texture(renderer, terrain_image, {253});
-    const auto texture = create_atlas_texture(renderer, texture_image, {255});
-    const auto units = create_atlas_texture(renderer, unit_image, {253, 255});
+    const auto terrain = create_atlas_texture(renderer, terrain_image, {252, 253, 254, 255});
+    const auto texture = create_atlas_texture(renderer, texture_image, {252, 253, 254, 255});
+    const auto units = create_atlas_texture(renderer, unit_image, {252, 253, 254, 255});
 
     sc::WorldMap map(8, 6, true);
     for (auto& tile : map.tiles()) {
         tile.terrain = sc::Terrain::land;
         tile.climate = 0x60;
+        tile.contour = 60;
         tile.visibility = 1U << 1U;
     }
     map.at({4, 2}).terrain = sc::Terrain::ocean;
+    map.at({4, 2}).climate = 0x40;
+    map.at({4, 2}).contour = 35;
+    map.at({6, 2}).terrain = sc::Terrain::ocean;
+    map.at({6, 2}).climate = 0x40;
+    map.at({6, 2}).contour = 55;
+    map.at({2, 2}).climate = 0xA0;
+    map.at({2, 2}).contour = 100;
     map.at({3, 3}).improvements = sc::tile_fungus;
     map.at({5, 3}).visibility = 0;
     sc::GameState game(std::move(map));
     game.units().push_back(
         sc::make_unit(1, 1, {1, 3}, sc::Chassis::native_life, sc::Domain::land, game.rules()));
+    const sc::TerrainGeometry geometry(game.map());
     const sc::MapProjection projection{80, 40, 1.0};
 
     SDL_SetRenderDrawColor(renderer, 7, 12, 18, 255);
     SDL_RenderClear(renderer);
     const auto visible = sc::visible_tiles(game.map(), projection, {0, 0, 640, 384});
-    for (const auto& tile : visible)
-        draw_tile(renderer, game, projection, tile, terrain, texture, false, 1);
-    const auto unit_top = projection.tile_top_left({1, 3});
-    draw_named_region(renderer, units, sf::unit_atlas, "mind_worm", 0,
-                      {unit_top.x, unit_top.y - 18.0}, 100, 76);
-    draw_diamond(renderer, projection, {1, 3}, {250, 211, 55, 255});
-    draw_diamond(renderer, projection, {3, 3}, {80, 220, 235, 255});
+    for (const auto pass :
+         {TerrainPass::ground, TerrainPass::water, TerrainPass::objects, TerrainPass::fog})
+        for (const auto& tile : visible)
+            draw_tile(renderer, game, geometry, projection, tile, terrain, texture, false, 1, pass);
+    const auto unit_surface = sc::project_terrain_tile(game.map(), geometry, projection, {1, 3});
+    const auto unit_center =
+        unit_surface.points[static_cast<std::size_t>(sc::TerrainVertex::center)];
+    const sc::ScreenPoint unit_top{unit_center.x - 50.0, unit_center.y - 42.0};
+    draw_named_region(renderer, units, sf::unit_atlas, "mind_worm", 0, unit_top, 100, 76);
+    draw_terrain_outline(renderer, unit_surface, {250, 211, 55, 255});
+    draw_terrain_outline(renderer,
+                         sc::project_terrain_tile(game.map(), geometry, projection, {3, 3}),
+                         {80, 220, 235, 255});
 
     auto* surface = SDL_RenderReadPixels(renderer, nullptr);
     bool passed = surface != nullptr;
     if (surface) {
-        passed &= pixel_near(surface, projection.tile_center({2, 2}), {132, 70, 42, 255});
-        passed &= pixel_near(surface, projection.tile_center({4, 2}), {20, 90, 160, 255});
-        passed &= pixel_near(surface, projection.tile_center({3, 3}), {190, 35, 70, 255});
-        passed &= pixel_near(surface, projection.tile_center({5, 3}), {5, 9, 14, 255});
-        passed &= pixel_near(surface, {unit_top.x + 50, unit_top.y + 20}, {245, 245, 220, 255});
+        const auto hill = sc::project_terrain_tile(game.map(), geometry, projection, {2, 2});
+        const auto water = sc::project_terrain_tile(game.map(), geometry, projection, {4, 2});
+        const auto shallow_water =
+            sc::project_terrain_tile(game.map(), geometry, projection, {6, 2});
+        const auto fungus = sc::project_terrain_tile(game.map(), geometry, projection, {3, 3});
+        const auto fog = sc::project_terrain_tile(game.map(), geometry, projection, {5, 3});
+        passed &= hill.points[0].y < projection.tile_center({2, 2}).y;
+        passed &= pixel_near(surface, hill.points[0], {132, 70, 42, 255});
+        passed &= pixel_near(surface, water.points[0], {20, 90, 160, 255});
+        passed &= pixel_near(surface, shallow_water.points[0], {19, 86, 157, 255});
+        passed &= pixel_near(surface, fungus.points[0], {190, 35, 70, 255});
+        passed &= pixel_near(surface, fog.points[0], {5, 9, 14, 255});
+        passed &= pixel_near(surface, {unit_top.x + 50, unit_top.y + 38}, {245, 245, 220, 255});
         passed &= SDL_SaveBMP(surface, output.string().c_str());
         SDL_DestroySurface(surface);
     }
@@ -673,6 +826,7 @@ int main(int argc, char** argv) {
         sc::make_unit(1, 1, *spawn, sc::Chassis::native_life, sc::Domain::land, game.rules()));
     if (acceptance)
         return run_acceptance_check(game);
+    const sc::TerrainGeometry terrain_geometry(game.map());
 
     if (!SDL_Init(SDL_INIT_VIDEO) || !TTF_Init()) {
         std::cerr << SDL_GetError() << '\n';
@@ -688,9 +842,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_SetRenderVSync(renderer, benchmark ? 0 : 1);
-    const auto terrain_texture = create_atlas_texture(renderer, *terrain_image, {253});
-    const auto texture_texture = create_atlas_texture(renderer, *texture_image, {255});
-    const auto unit_texture = create_atlas_texture(renderer, *unit_image, {253, 255});
+    const auto terrain_texture =
+        create_atlas_texture(renderer, *terrain_image, {252, 253, 254, 255});
+    const auto texture_texture =
+        create_atlas_texture(renderer, *texture_image, {252, 253, 254, 255});
+    const auto unit_texture = create_atlas_texture(renderer, *unit_image, {252, 253, 254, 255});
     if (!terrain_texture.texture || !texture_texture.texture || !unit_texture.texture) {
         std::cerr << "failed creating indexed atlas texture: " << SDL_GetError() << '\n';
         return 1;
@@ -702,8 +858,13 @@ int main(int argc, char** argv) {
     int output_height = 800;
     SDL_GetRenderOutputSize(renderer, &output_width, &output_height);
     sc::MapProjection projection;
-    projection.origin_x = output_width / 2.0 - spawn->x * projection.tile_width / 2.0;
+    projection.origin_x = output_width / 2.0 - (spawn->x + 1) * projection.tile_width / 2.0;
     projection.origin_y = output_height / 2.0 - spawn->y * projection.tile_height / 2.0;
+    const auto projected_spawn =
+        sc::project_terrain_tile(game.map(), terrain_geometry, projection, *spawn);
+    projection.origin_y +=
+        output_height / 2.0 -
+        projected_spawn.points[static_cast<std::size_t>(sc::TerrainVertex::center)].y;
     std::optional<sc::MapPosition> hovered = spawn;
     std::optional<sc::UnitId> selected_unit = 1;
     std::vector<sc::MapPosition> preview;
@@ -781,13 +942,13 @@ int main(int argc, char** argv) {
                     projection.origin_x += event.motion.xrel;
                     projection.origin_y += event.motion.yrel;
                 }
-                hovered =
-                    sc::screen_to_world(game.map(), projection, {event.motion.x, event.motion.y});
+                hovered = sc::screen_to_world(game.map(), terrain_geometry, projection,
+                                              {event.motion.x, event.motion.y});
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
                 event.button.button == SDL_BUTTON_LEFT) {
-                const auto picked =
-                    sc::screen_to_world(game.map(), projection, {event.button.x, event.button.y});
+                const auto picked = sc::screen_to_world(game.map(), terrain_geometry, projection,
+                                                        {event.button.x, event.button.y});
                 if (!picked)
                     continue;
                 hovered = picked;
@@ -849,14 +1010,18 @@ int main(int argc, char** argv) {
         const auto visible = sc::visible_tiles(
             game.map(), projection,
             {0, 0, static_cast<double>(output_width), static_cast<double>(output_height)});
-        for (const auto& tile : visible)
-            draw_tile(renderer, game, projection, tile, terrain_texture, texture_texture,
-                      reveal_all, 1);
+        for (const auto pass :
+             {TerrainPass::ground, TerrainPass::water, TerrainPass::objects, TerrainPass::fog})
+            for (const auto& tile : visible)
+                draw_tile(renderer, game, terrain_geometry, projection, tile, terrain_texture,
+                          texture_texture, reveal_all, 1, pass);
         for (const auto& tile : visible) {
+            const auto surface =
+                sc::project_terrain_tile(game.map(), terrain_geometry, projection, tile.unwrapped);
             if (std::find(preview.begin(), preview.end(), tile.position) != preview.end())
-                draw_diamond(renderer, projection, tile.unwrapped, {238, 239, 180, 255});
+                draw_terrain_outline(renderer, surface, {238, 239, 180, 255});
             if (hovered && tile.position == *hovered)
-                draw_diamond(renderer, projection, tile.unwrapped, {80, 220, 235, 255});
+                draw_terrain_outline(renderer, surface, {80, 220, 235, 255});
         }
         for (const auto& unit : game.units()) {
             if (unit.embarked_on)
@@ -864,21 +1029,28 @@ int main(int argc, char** argv) {
             for (const auto& tile : visible) {
                 if (tile.position != unit.position)
                     continue;
-                const auto top = projection.tile_top_left(tile.unwrapped);
+                const auto surface = sc::project_terrain_tile(game.map(), terrain_geometry,
+                                                              projection, tile.unwrapped);
+                const auto center =
+                    surface.points[static_cast<std::size_t>(sc::TerrainVertex::center)];
                 const auto frame = static_cast<std::uint8_t>((now / 180) % 7);
                 draw_named_region(renderer, unit_texture, sf::unit_atlas, "mind_worm", frame,
-                                  {top.x, top.y - 18.0 * projection.zoom},
+                                  {center.x - projection.tile_width * projection.zoom / 2.0,
+                                   center.y - 42.0 * projection.zoom},
                                   static_cast<float>(projection.tile_width * projection.zoom),
                                   static_cast<float>(76.0 * projection.zoom));
                 if (selected_unit && unit.id == *selected_unit)
-                    draw_diamond(renderer, projection, tile.unwrapped, {250, 211, 55, 255});
+                    draw_terrain_outline(renderer, surface, {250, 211, 55, 255});
             }
         }
         if (active_event) {
             if (const auto* moved = std::get_if<sc::UnitMoved>(&active_event->event)) {
                 for (const auto& tile : visible)
                     if (tile.position == moved->to)
-                        draw_diamond(renderer, projection, tile.unwrapped, {255, 255, 255, 210});
+                        draw_terrain_outline(renderer,
+                                             sc::project_terrain_tile(game.map(), terrain_geometry,
+                                                                      projection, tile.unwrapped),
+                                             {255, 255, 255, 210});
             }
         }
 

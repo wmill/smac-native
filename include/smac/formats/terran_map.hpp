@@ -22,6 +22,7 @@ struct RawMapTile {
 };
 struct TerranMap {
     std::int32_t width{}, height{};
+    std::int32_t sea_level{};
     bool flat{};
     std::uint32_t seed{};
     std::array<std::byte, 2724> legacy_header{};
